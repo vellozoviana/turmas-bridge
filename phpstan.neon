@@ -1,0 +1,9 @@
+parameters:
+    level: 5
+    paths:
+        - src
+        - turmas-bridge.php
+    bootstrapFiles:
+        - tests/bootstrap.php
+    scanFiles:
+        - tests/stubs/gravityforms.php

@@ -1,0 +1,12 @@
+/vendor/
+/.phpunit.result.cache
+/.phpunit.cache/
+/.phpstan.cache
+.env
+*.log
+*.tmp
+/tmp/
+/logs/
+/.idea/
+/.vscode/
+.DS_Store
