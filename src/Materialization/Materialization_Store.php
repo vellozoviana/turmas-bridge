@@ -11,4 +11,7 @@ interface Materialization_Store {
 	/** @param list<string> $field_ids */
 	public function materialized(string $publication_key, int $form_id, array $field_ids): bool;
 	public function failed(string $publication_key, ?int $form_id, string $error_code): bool;
+	public function choice_fingerprint(string $publication_key, string $fingerprint): bool;
+	public function acquire_choice_lock(string $publication_key): bool;
+	public function release_choice_lock(string $publication_key): void;
 }

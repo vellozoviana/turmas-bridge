@@ -6,13 +6,18 @@ namespace TurmasBridge\Publications;
 
 use TurmasBridge\Materialization\Materialization_Service;
 use TurmasBridge\Materialization\Publication_Materializer;
+use TurmasBridge\Materialization\Materialization_Repository;
+use TurmasBridge\Materialization\WordPress_Gravity_Forms_Gateway;
+use TurmasBridge\Choices\Publication_Choice_Preparer;
+use TurmasBridge\Choices\Publication_Choice_Service;
 
 final class Publication_Controller {
 	public const IDEMPOTENCY_HEADER = 'idempotency-key';
 	private Publication_Command_Store $store;
 	private Publication_Materializer $materializer;
+	private Publication_Choice_Preparer $choices;
 
-	public function __construct(?Publication_Command_Store $store = null, ?Publication_Materializer $materializer = null) { $this->store = $store ?? new Idempotency_Repository(); $this->materializer = $materializer ?? new Materialization_Service(); }
+	public function __construct(?Publication_Command_Store $store = null, ?Publication_Materializer $materializer = null, ?Publication_Choice_Preparer $choices = null) { $this->store = $store ?? new Idempotency_Repository(); $this->materializer = $materializer ?? new Materialization_Service(); $this->choices = $choices ?? new Publication_Choice_Service(new Materialization_Repository(), new WordPress_Gravity_Forms_Gateway()); }
 
 	/** @return \WP_REST_Response|\WP_Error */
 	public function receive(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
@@ -30,6 +35,9 @@ final class Publication_Controller {
 		if (is_wp_error($payload)) return $payload;
 		$response = $this->materializer->materialize($payload, $hash);
 		if (is_wp_error($response)) return $response;
+		$choice_result = $this->choices->prepare($payload);
+		if (is_wp_error($choice_result)) return $choice_result;
+		$response['choices_prepared'] = true;
 		if (! $this->store->record($key, $hash, 201, $response)) {
 			$raced = $this->store->find($key);
 			if ($raced) return hash_equals((string) $raced['payload_hash'], $hash) ? $this->replay($raced) : $this->error('turmas_bridge_idempotency_conflict', 'A chave de idempotência já foi usada com outro conteúdo.', 409);

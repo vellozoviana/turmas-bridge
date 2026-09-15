@@ -26,4 +26,10 @@ final class WordPress_Gravity_Forms_Gateway implements Gravity_Forms_Gateway {
 		if ($result === false || is_wp_error($result)) return new \WP_Error('turmas_bridge_form_update_failed', 'Não foi possível proteger o formulário criado.', array('status' => 502));
 		return (int) $new_id;
 	}
+	/** @param array<string, mixed> $form */
+	public function update_form(array $form): bool|\WP_Error {
+		if (! $this->is_available()) return new \WP_Error('turmas_bridge_gravity_forms_unavailable', 'Gravity Forms não está disponível.', array('status' => 503));
+		$result = \GFAPI::update_form($form);
+		return $result === false || is_wp_error($result) ? new \WP_Error('turmas_bridge_form_update_failed', 'Não foi possível atualizar as choices do formulário.', array('status' => 502)) : true;
+	}
 }

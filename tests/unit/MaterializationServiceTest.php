@@ -47,6 +47,9 @@ final class Memory_Materialization_Store implements Materialization_Store {
 	public function reserve(string $publication_key, int $template_id, string $payload_hash): bool { if (isset($this->records[$publication_key])) return false; $this->records[$publication_key] = array('publication_key' => $publication_key, 'template_id' => $template_id, 'form_id' => null, 'status' => 'RECEIVED'); return true; }
 	public function materialized(string $publication_key, int $form_id, array $field_ids): bool { $this->records[$publication_key]['form_id'] = $form_id; $this->records[$publication_key]['field_ids'] = $field_ids; if ($this->fail_materialized) { $this->records[$publication_key]['status'] = 'FAILED'; return false; } $this->records[$publication_key]['status'] = 'MATERIALIZED'; return true; }
 	public function failed(string $publication_key, ?int $form_id, string $error_code): bool { $this->records[$publication_key]['form_id'] = $form_id; $this->records[$publication_key]['status'] = 'FAILED'; return true; }
+	public function choice_fingerprint(string $publication_key, string $fingerprint): bool { $this->records[$publication_key]['choices_fingerprint'] = $fingerprint; return true; }
+	public function acquire_choice_lock(string $publication_key): bool { return true; }
+	public function release_choice_lock(string $publication_key): void {}
 }
 
 final class Fake_Gravity_Gateway implements Gravity_Forms_Gateway {
@@ -54,4 +57,5 @@ final class Fake_Gravity_Gateway implements Gravity_Forms_Gateway {
 	public function is_available(): bool { return $this->available; }
 	public function form(int $form_id): ?array { if ($form_id === 199) return $this->template; return $this->duplicates > 0 ? array('id' => $form_id, 'is_active' => false, 'fields' => $this->template['fields']) : null; }
 	public function duplicate_inactive(int $template_id, string $title, string $marker): int|\WP_Error { $this->duplicates++; return 412; }
+	public function update_form(array $form): bool|\WP_Error { return true; }
 }

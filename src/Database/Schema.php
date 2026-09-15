@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TurmasBridge\Database;
 
 final class Schema {
-	public const VERSION = '0.3.0';
+	public const VERSION = '0.4.0';
 	public const OPTION_NAME = 'turmas_bridge_schema_version';
 
 	public static function install(): void {
@@ -17,6 +17,7 @@ final class Schema {
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			idempotency_key varchar(128) NOT NULL,
 			payload_hash char(64) NOT NULL,
+			choices_fingerprint char(64) DEFAULT NULL,
 			response_status smallint(5) unsigned NOT NULL,
 			response_body longtext NOT NULL,
 			created_at datetime NOT NULL,
