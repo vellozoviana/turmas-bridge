@@ -4,21 +4,27 @@ Plugin WordPress instalado no site público para atender, por HTTPS autenticado,
 o TURMAS-EPF. Ele não acessa o banco de dados do sistema de gestão e o
 TURMAS-EPF não acessa bancos ou tabelas deste site.
 
-## Fase atual: 11
+## Estado atual
 
-Versão pública atual: `0.1.0` em desenvolvimento. Versão do contrato REST:
-`v1`.
+Versão pública atual: `0.4.0`. Versão do contrato REST: `v1`.
 
 ## Escopo atual
 
-Somente duas operações de leitura são disponibilizadas:
+O Bridge disponibiliza as operações autenticadas:
 
 - `GET /wp-json/turmas-bridge/v1/ping`;
 - `GET /wp-json/turmas-bridge/v1/formularios/{id}`.
+- `POST /wp-json/turmas-bridge/v1/publicacoes`.
 
-Não cria, clona, atualiza ou exclui formulários. Não integra GP Inventory,
-FlowSheet ou InscriHub, não lê inscrições e não cria tabelas. O bridge somente
-lê a definição de um template do Gravity Forms e produz um manifesto seguro.
+O `POST` valida o contrato, protege a requisição por HMAC e Idempotency-Key,
+materializa uma cópia técnica **inativa** do template e prepara choices por
+CRE usando `adminLabel`. Ele não publica o formulário, não lê Entries nem
+dados pessoais e não integra GP Inventory, FlowSheet ou InscriHub.
+
+A Fase 12D-B (Advanced Resources e capacidade compartilhada) permanece
+**bloqueada**: não existe ambiente autorizado/licenciado para validar a
+persistência e a escrita programática do GP Inventory. Não há workaround por
+SQL, inventários simples ou contador paralelo.
 
 ## Contrato HMAC v1
 
@@ -53,8 +59,9 @@ caracteres `A-Z`, `a-z`, `0-9`, `.`, `_`, `~` e `-`, com 16 a 128 caracteres.
 Após uma assinatura válida, o nonce é gravado em transient sob chave derivada
 por SHA-256 durante cinco minutos; uma repetição nesse período recebe `401`.
 A assinatura é `v1=` seguida do HMAC-SHA256 hexadecimal minúsculo e é
-comparada com `hash_equals`. Operações GET não usam idempotency key; ela será
-introduzida somente em operações de escrita futuras.
+comparada com `hash_equals`. Operações GET não usam idempotency key. O POST de
+Publicações exige `Idempotency-Key`: a mesma chave com o mesmo corpo reproduz
+a resposta; com corpo distinto recebe `409`.
 
 O contrato é próprio, documentado e versionado, e permanece independente de
 outros bridges institucionais. Qualquer interoperabilidade futura exige
@@ -105,14 +112,10 @@ trace. Um template que não possa ser convertido em manifesto também retorna
 ### Ambiente local e dependências
 
 Na estação local atual, Gravity Forms, GP Inventory e FlowSheet não estão
-instalados. A referência institucional de leitura é o formulário 199, que
-possui 11 campos de Turma por CRE; o campo 195 é um seletor obrigatório da
-1ª CRE e usa inventário por choice. A Fase 11 apenas documenta essa estrutura:
-não lê inscrições, capacidade ou estoque disponível e não decide o formato
-definitivo do valor estável de Turma. FlowSheet exige identificação técnica
-posterior; sua presença no menu de configurações não prova o formato de sua
-integração. O pacote InscriHub foi apenas inspecionado fora da instalação;
-nada foi registrado ou alterado no InscriHub.
+instalados. A convenção de campos para choices é `turma_cre_XX`, descoberta
+por `adminLabel`; IDs de fields não são constantes. Qualquer referência
+histórica a IDs institucionais é evidência de reconhecimento, não configuração
+de execução. FlowSheet e InscriHub permanecem pendentes e não foram alterados.
 
 ## Qualidade
 
@@ -127,5 +130,5 @@ composer test
 
 - inspecionar os modelos Gravity Forms e os metadados de GP Inventory,
   FlowSheet e InscriHub no ambiente de homologação;
-- cliente e configuração no TURMAS-EPF permanecem fora desta entrega e exigem autorização específica;
-- implementar criação, provisionamento e atualização somente nas Fases 12–14.
+- validar Advanced Resources em laboratório autorizado e só então implementar a Fase 12D-B;
+- definir reconciliação operacional, FlowSheet, InscriHub, ativação e homologação end-to-end em fases próprias.

@@ -13,7 +13,10 @@ final class Materialization_Service implements Publication_Materializer {
 	public function materialize(array $payload, string $payload_hash): array|\WP_Error {
 		$key = (string) $payload['publication']['publication_key'];
 		$existing = $this->store->find($key);
-		if ($existing && (string) $existing['status'] === 'MATERIALIZED') return $this->response($key, (int) $existing['form_id'], true);
+		if ($existing && (string) $existing['status'] === 'MATERIALIZED') {
+			if (! $this->gravity->is_available()) return $this->error('turmas_bridge_gravity_forms_unavailable', 'Gravity Forms não está disponível.', 503);
+			return $this->reconcile($key, (int) ($existing['form_id'] ?? 0));
+		}
 		if (! $this->gravity->is_available()) return $this->error('turmas_bridge_gravity_forms_unavailable', 'Gravity Forms não está disponível.', 503);
 		$template_id = $this->config->id();
 		$template = $this->gravity->form($template_id);

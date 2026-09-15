@@ -1,8 +1,11 @@
-# Pré-Fase 12 — contrato de publicação
+# Pré-Fase 12 — contrato de publicação (registro histórico)
 
-Este documento consolida decisões e limites técnicos para a futura publicação
-de inscrições. Não implementa endpoints de escrita, formulário, tabela,
-sincronização ou integração externa.
+Este documento consolidou as decisões que orientaram as Fases 12A, 12B, 12C e
+12D-A. A fundação de publicação, o endpoint autenticado, a materialização
+inativa e choices por CRE agora existem localmente. As seções que tratam de
+Advanced Resources, reconciliação operacional, FlowSheet e InscriHub continuam
+propostas para fases futuras; a Fase 12D-B permanece bloqueada até laboratório
+autorizado.
 
 ## Identidade externa da Turma
 

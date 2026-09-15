@@ -25,6 +25,17 @@ final class PublicationChoiceServiceTest extends TestCase {
 		self::assertTrue($again['idempotent_replay']); self::assertSame(1, $gateway->updates); self::assertSame('keep', $gateway->form['fields'][3]['choices'][0]['value']);
 	}
 
+	public function test_incidental_cre_field_order_does_not_create_false_choice_drift(): void {
+		$store = new Choice_Store_Fake(); $gateway = new Choice_Gateway_Fake(); $service = new Publication_Choice_Service($store, $gateway);
+		$service->prepare($this->payload());
+		$gateway->form['fields'] = array($gateway->form['fields'][1], $gateway->form['fields'][0], $gateway->form['fields'][2], $gateway->form['fields'][3]);
+
+		$result = $service->prepare($this->payload());
+
+		self::assertTrue($result['idempotent_replay']);
+		self::assertSame(1, $gateway->updates);
+	}
+
 	public function test_missing_or_ambiguous_cre_field_fails_before_update(): void {
 		$store = new Choice_Store_Fake(); $gateway = new Choice_Gateway_Fake(); array_splice($gateway->form['fields'], 1, 1);
 		$result = (new Publication_Choice_Service($store, $gateway))->prepare($this->payload()); self::assertSame('turmas_bridge_cre_field_missing', $result->get_error_code()); self::assertSame(0, $gateway->updates);

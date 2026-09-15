@@ -36,6 +36,7 @@ final class Publication_Choice_Service implements Publication_Choice_Preparer {
 			$cre_seen = array(); foreach ((array) ($class['cres'] ?? array()) as $cre) { $cre = (string) $cre; if (! preg_match('/^\d{2}$/', $cre) || isset($cre_seen[$cre])) return $this->error('turmas_bridge_invalid_choice_cres', 'As CRES de uma Turma são inválidas.', 422); if (! isset($map[$cre])) return $this->error('turmas_bridge_cre_field_missing', 'Não existe field configurado para uma CRE necessária.', 422); $cre_seen[$cre] = true; $choices[$cre][] = array('text' => $text, 'value' => $key, '_code' => $code); }
 		}
 		foreach ($choices as $cre => $items) { usort($items, static fn (array $a, array $b): int => strnatcmp($a['_code'], $b['_code'])); $choices[$cre] = array_map(static fn (array $item): array => array('text' => $item['text'], 'value' => $item['value']), $items); }
+		ksort($choices, SORT_STRING);
 		return $choices;
 	}
 	private function error(string $code, string $message, int $status): \WP_Error { return new \WP_Error($code, $message, array('status' => $status)); }

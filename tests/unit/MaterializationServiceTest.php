@@ -37,6 +37,17 @@ final class MaterializationServiceTest extends TestCase {
 		self::assertSame(412, $reconciled['form_id']); self::assertTrue($reconciled['idempotent_replay']); self::assertSame(1, $gateway->duplicates);
 	}
 
+	public function test_existing_materialization_with_missing_form_requires_reconciliation(): void {
+		$store = new Memory_Materialization_Store(); $gateway = new Fake_Gravity_Gateway(); $service = new Materialization_Service($store, $gateway);
+		$service->materialize($this->payload(), 'a');
+		$gateway->materialized_form_missing = true;
+
+		$result = $service->materialize($this->payload(), 'b');
+
+		self::assertSame('turmas_bridge_reconciliation_required', $result->get_error_code());
+		self::assertSame(1, $gateway->duplicates);
+	}
+
 	/** @return array<string,mixed> */
 	private function payload(): array { return array('publication' => array('year' => 2027, 'formation_code' => 'MT1', 'publication_key' => '2027:MT1')); }
 }
@@ -53,9 +64,9 @@ final class Memory_Materialization_Store implements Materialization_Store {
 }
 
 final class Fake_Gravity_Gateway implements Gravity_Forms_Gateway {
-	public bool $available = true; /** @var array<string,mixed>|null */ public ?array $template = array('id' => 199, 'is_active' => true, 'fields' => array(array('id' => 10, 'choices' => array(array('text' => 'x'))), array('id' => 11, 'choices' => array(array('text' => 'y'))))); public int $duplicates = 0;
+	public bool $available = true; public bool $materialized_form_missing = false; /** @var array<string,mixed>|null */ public ?array $template = array('id' => 199, 'is_active' => true, 'fields' => array(array('id' => 10, 'choices' => array(array('text' => 'x'))), array('id' => 11, 'choices' => array(array('text' => 'y'))))); public int $duplicates = 0;
 	public function is_available(): bool { return $this->available; }
-	public function form(int $form_id): ?array { if ($form_id === 199) return $this->template; return $this->duplicates > 0 ? array('id' => $form_id, 'is_active' => false, 'fields' => $this->template['fields']) : null; }
+	public function form(int $form_id): ?array { if ($form_id === 199) return $this->template; return $this->duplicates > 0 && ! $this->materialized_form_missing ? array('id' => $form_id, 'is_active' => false, 'fields' => $this->template['fields']) : null; }
 	public function duplicate_inactive(int $template_id, string $title, string $marker): int|\WP_Error { $this->duplicates++; return 412; }
 	public function update_form(array $form): bool|\WP_Error { return true; }
 }
