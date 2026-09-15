@@ -53,7 +53,17 @@ class WP_REST_Response {
 	public function get_status(): int { return $this->status; }
 }
 
+class wpdb {
+	public string $prefix = 'wp_';
+	public int $insert_id = 0;
+	public function get_charset_collate(): string { return ''; }
+	public function prepare(string $query, mixed ...$arguments): string { return $query; }
+	public function get_row(string $query, string $output = ''): mixed { return null; }
+	public function insert(string $table, array $data): int|false { return 1; }
+}
+
 function add_action(string $hook, callable $callback, int $priority = 10, int $accepted_args = 1): void {}
+function register_activation_hook(string $file, callable $callback): void {}
 function add_options_page(mixed ...$arguments): void {}
 function register_rest_route(string $namespace, string $route, array $arguments): void { $GLOBALS['turmas_bridge_test_routes'][] = array('namespace' => $namespace, 'route' => $route, 'arguments' => $arguments); }
 function current_user_can(string $capability): bool { return true; }
@@ -72,6 +82,9 @@ function is_ssl(): bool { return (bool) ($GLOBALS['turmas_bridge_test_ssl'] ?? t
 function wp_get_environment_type(): string { return (string) ($GLOBALS['turmas_bridge_test_environment'] ?? 'production'); }
 function get_option(string $option, mixed $default = false): mixed { return $GLOBALS['turmas_bridge_test_options'][$option] ?? $default; }
 function update_option(string $option, mixed $value, mixed $autoload = null): bool { $GLOBALS['turmas_bridge_test_options'][$option] = $value; return true; }
+function current_time(string $type, bool $gmt = false): string { return '2026-01-01 00:00:00'; }
+function wp_json_encode(mixed $value, int $flags = 0): string|false { return json_encode($value, $flags); }
+function dbDelta(string $query): array { return array(); }
 function get_transient(string $key): mixed {
 	$entry = $GLOBALS['turmas_bridge_test_transients'][$key] ?? null;
 	if (! is_array($entry) || $entry['expires'] < time()) { unset($GLOBALS['turmas_bridge_test_transients'][$key]); return false; }

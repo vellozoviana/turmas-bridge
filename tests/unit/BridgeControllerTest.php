@@ -21,9 +21,9 @@ final class BridgeControllerTest extends TestCase {
 	public function test_routes_are_read_only_and_authenticated(): void {
 		Bridge_Controller::register_routes();
 
-		self::assertCount(2, $GLOBALS['turmas_bridge_test_routes']);
-		foreach ($GLOBALS['turmas_bridge_test_routes'] as $route) {
-			self::assertSame('GET', $route['arguments']['methods']);
+		self::assertCount(3, $GLOBALS['turmas_bridge_test_routes']);
+		foreach ($GLOBALS['turmas_bridge_test_routes'] as $index => $route) {
+			self::assertSame($index === 2 ? 'POST' : 'GET', $route['arguments']['methods']);
 			self::assertSame(array(Bridge_Controller::class, 'authenticate'), $route['arguments']['permission_callback']);
 		}
 	}

@@ -6,6 +6,7 @@ namespace TurmasBridge\Api;
 
 use TurmasBridge\Auth\Request_Authenticator;
 use TurmasBridge\Gravity\Template_Manifest;
+use TurmasBridge\Publications\Publication_Controller;
 
 final class Bridge_Controller {
 	public static function register_routes(): void {
@@ -18,6 +19,11 @@ final class Bridge_Controller {
 			'methods' => 'GET',
 			'permission_callback' => array(self::class, 'authenticate'),
 			'callback' => array(self::class, 'template'),
+		));
+		register_rest_route('turmas-bridge/v1', '/publicacoes', array(
+			'methods' => 'POST',
+			'permission_callback' => array(self::class, 'authenticate'),
+			'callback' => array(self::class, 'publication'),
 		));
 	}
 
@@ -54,5 +60,10 @@ final class Bridge_Controller {
 			'template' => $manifest,
 			'request_id' => wp_generate_uuid4(),
 		), 200);
+	}
+
+	/** @return \WP_REST_Response|\WP_Error */
+	public static function publication(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
+		return (new Publication_Controller())->receive($request);
 	}
 }
