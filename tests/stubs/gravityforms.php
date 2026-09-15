@@ -7,4 +7,6 @@ declare(strict_types=1);
  */
 class GFAPI {
 	public static function get_form(int $form_id): mixed {}
+	public static function duplicate_form(int $form_id): mixed {}
+	public static function update_form(array $form): mixed {}
 }

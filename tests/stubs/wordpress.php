@@ -60,6 +60,7 @@ class wpdb {
 	public function prepare(string $query, mixed ...$arguments): string { return $query; }
 	public function get_row(string $query, string $output = ''): mixed { return null; }
 	public function insert(string $table, array $data): int|false { return 1; }
+	public function update(string $table, array $data, array $where): int|false { return 1; }
 }
 
 function add_action(string $hook, callable $callback, int $priority = 10, int $accepted_args = 1): void {}
@@ -78,6 +79,7 @@ function esc_html(string $text): string { return $text; }
 function sanitize_text_field(string $text): string { return trim(strip_tags($text)); }
 function sanitize_key(string $key): string { return strtolower((string) preg_replace('/[^a-z0-9_\-]/i', '', $key)); }
 function wp_unslash(string $value): string { return stripslashes($value); }
+function absint(mixed $value): int { return abs((int) $value); }
 function is_ssl(): bool { return (bool) ($GLOBALS['turmas_bridge_test_ssl'] ?? true); }
 function wp_get_environment_type(): string { return (string) ($GLOBALS['turmas_bridge_test_environment'] ?? 'production'); }
 function get_option(string $option, mixed $default = false): mixed { return $GLOBALS['turmas_bridge_test_options'][$option] ?? $default; }

@@ -7,14 +7,15 @@ namespace TurmasBridge\Tests\Unit;
 use PHPUnit\Framework\TestCase;
 use TurmasBridge\Publications\Publication_Command_Store;
 use TurmasBridge\Publications\Publication_Controller;
+use TurmasBridge\Materialization\Publication_Materializer;
 
 final class PublicationControllerTest extends TestCase {
 	public function test_valid_command_is_accepted_then_replayed_without_reprocessing(): void {
 		$store = new Memory_Command_Store();
-		$controller = new Publication_Controller($store);
+		$controller = new Publication_Controller($store, new Fake_Materializer());
 		$first = $controller->receive($this->request($this->payload()));
 		$again = $controller->receive($this->request($this->payload()));
-		self::assertSame(202, $first->get_status());
+		self::assertSame(201, $first->get_status());
 		self::assertFalse($first->get_data()['idempotent_replay']);
 		self::assertTrue($again->get_data()['idempotent_replay']);
 		self::assertSame(1, $store->writes);
@@ -22,7 +23,7 @@ final class PublicationControllerTest extends TestCase {
 
 	public function test_same_key_with_different_payload_is_conflict(): void {
 		$store = new Memory_Command_Store();
-		$controller = new Publication_Controller($store);
+		$controller = new Publication_Controller($store, new Fake_Materializer());
 		$controller->receive($this->request($this->payload()));
 		$changed = $this->payload(); $changed['classes'][0]['capacity'] = 31;
 		$result = $controller->receive($this->request($changed));
@@ -33,7 +34,7 @@ final class PublicationControllerTest extends TestCase {
 
 	/** @dataProvider invalid_payloads */
 	public function test_invalid_contract_is_rejected(array $payload, string $expected): void {
-		$result = (new Publication_Controller(new Memory_Command_Store()))->receive($this->request($payload, 'idempotency-invalid-0001'));
+		$result = (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer()))->receive($this->request($payload, 'idempotency-invalid-0001'));
 		self::assertInstanceOf(\WP_Error::class, $result);
 		self::assertSame($expected, $result->get_error_code());
 	}
@@ -54,10 +55,10 @@ final class PublicationControllerTest extends TestCase {
 	public function test_missing_key_and_invalid_json_are_controlled_errors(): void {
 		$missing = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes');
 		$missing->set_body('{}');
-		self::assertSame('turmas_bridge_idempotency_key_required', (new Publication_Controller(new Memory_Command_Store()))->receive($missing)->get_error_code());
+		self::assertSame('turmas_bridge_idempotency_key_required', (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer()))->receive($missing)->get_error_code());
 		$invalid = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes');
 		$invalid->set_header('Idempotency-Key', 'idempotency-json-00001'); $invalid->set_body('{');
-		self::assertSame('turmas_bridge_invalid_json', (new Publication_Controller(new Memory_Command_Store()))->receive($invalid)->get_error_code());
+		self::assertSame('turmas_bridge_invalid_json', (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer()))->receive($invalid)->get_error_code());
 	}
 
 	/** @param array<string,mixed> $payload */
@@ -81,4 +82,8 @@ final class Memory_Command_Store implements Publication_Command_Store {
 	public int $writes = 0;
 	public function find(string $idempotency_key): ?array { return $this->records[$idempotency_key] ?? null; }
 	public function record(string $idempotency_key, string $payload_hash, int $status, array $response): bool { $this->writes++; $this->records[$idempotency_key] = array('payload_hash' => $payload_hash, 'response_status' => $status, 'response_body' => json_encode($response)); return true; }
+}
+
+final class Fake_Materializer implements Publication_Materializer {
+	public function materialize(array $payload, string $payload_hash): array|\WP_Error { return array('schema_version' => '1', 'publication_key' => $payload['publication']['publication_key'], 'status' => 'materialized', 'form_id' => 412, 'idempotent_replay' => false); }
 }
