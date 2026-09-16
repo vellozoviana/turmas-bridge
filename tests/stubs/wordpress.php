@@ -55,6 +55,7 @@ class WP_REST_Response {
 
 class wpdb {
 	public string $prefix = 'wp_';
+	public string $options = 'wp_options';
 	public int $insert_id = 0;
 	public function get_charset_collate(): string { return ''; }
 	public function prepare(string $query, mixed ...$arguments): string { return $query; }
@@ -62,6 +63,8 @@ class wpdb {
 	public function get_var(string $query): mixed { return 1; }
 	public function insert(string $table, array $data): int|false { return 1; }
 	public function update(string $table, array $data, array $where): int|false { return 1; }
+	public function query(string $query): int|false { return 1; }
+	public function esc_like(string $text): string { return addcslashes($text, '_%\\'); }
 }
 
 function add_action(string $hook, callable $callback, int $priority = 10, int $accepted_args = 1): void {}
@@ -84,6 +87,11 @@ function absint(mixed $value): int { return abs((int) $value); }
 function is_ssl(): bool { return (bool) ($GLOBALS['turmas_bridge_test_ssl'] ?? true); }
 function wp_get_environment_type(): string { return (string) ($GLOBALS['turmas_bridge_test_environment'] ?? 'production'); }
 function get_option(string $option, mixed $default = false): mixed { return $GLOBALS['turmas_bridge_test_options'][$option] ?? $default; }
+function add_option(string $option, mixed $value = '', string $deprecated = '', bool|string $autoload = true): bool {
+	if ((bool) ($GLOBALS['turmas_bridge_test_add_option_failure'] ?? false) || array_key_exists($option, $GLOBALS['turmas_bridge_test_options'])) return false;
+	$GLOBALS['turmas_bridge_test_options'][$option] = $value;
+	return true;
+}
 function update_option(string $option, mixed $value, mixed $autoload = null): bool { $GLOBALS['turmas_bridge_test_options'][$option] = $value; return true; }
 function current_time(string $type, bool $gmt = false): string { return '2026-01-01 00:00:00'; }
 function wp_json_encode(mixed $value, int $flags = 0): string|false { return json_encode($value, $flags); }
@@ -94,6 +102,8 @@ function get_transient(string $key): mixed {
 	return $entry['value'];
 }
 function set_transient(string $key, mixed $value, int $expiration): bool { $GLOBALS['turmas_bridge_test_transients'][$key] = array('value' => $value, 'expires' => time() + $expiration); return true; }
+function wp_next_scheduled(string $hook): int|false { return $GLOBALS['turmas_bridge_test_scheduled'][$hook] ?? false; }
+function wp_schedule_event(int $timestamp, string $recurrence, string $hook): bool { $GLOBALS['turmas_bridge_test_scheduled'][$hook] = $timestamp; return true; }
 function is_wp_error(mixed $thing): bool { return $thing instanceof WP_Error; }
 function wp_generate_uuid4(): string { return '11111111-1111-4111-8111-111111111111'; }
 function plugin_dir_path(string $file): string { return dirname($file) . DIRECTORY_SEPARATOR; }

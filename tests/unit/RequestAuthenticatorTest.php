@@ -16,6 +16,7 @@ final class RequestAuthenticatorTest extends TestCase {
 	protected function setUp(): void {
 		$GLOBALS['turmas_bridge_test_options'] = array(Secret_Provider::OPTION_NAME => self::SECRET);
 		$GLOBALS['turmas_bridge_test_transients'] = array();
+		$GLOBALS['turmas_bridge_test_add_option_failure'] = false;
 		$GLOBALS['turmas_bridge_test_ssl'] = true;
 	}
 
@@ -58,6 +59,12 @@ final class RequestAuthenticatorTest extends TestCase {
 			$result = $this->authenticator()->authenticate($this->signed_request(timestamp: $timestamp, nonce: 'nonce-timestamp-' . $timestamp));
 			self::assertInstanceOf(\WP_Error::class, $result);
 		}
+	}
+
+	public function test_malformed_nonce_and_nonce_storage_failure_are_rejected(): void {
+		self::assertInstanceOf(\WP_Error::class, $this->authenticator()->authenticate($this->signed_request(nonce: 'short')));
+		$GLOBALS['turmas_bridge_test_add_option_failure'] = true;
+		self::assertInstanceOf(\WP_Error::class, $this->authenticator()->authenticate($this->signed_request(nonce: 'nonce-storage-failure-01')));
 	}
 
 	public function test_path_query_method_and_body_are_part_of_signature(): void {

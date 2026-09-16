@@ -11,7 +11,7 @@
 | `adminLabel` ausente ou ambíguo | Média | Alto | Validação prévia e erro controlado | Implementado |
 | Drift manual de fields/choices | Média | Médio | Fingerprint, detecção e reconciliação futura | Parcial |
 | Redução abaixo do consumo | Média | Alto | Leitura oficial e bloqueio de regra de negócio | Bloqueado |
-| Replay de requisição | Baixa | Alto | HMAC, timestamp e nonce | Bloqueado: claim por transient usa leitura e escrita separadas, sem reserva atômica |
+| Replay de requisição | Baixa | Alto | HMAC, timestamp e nonce | Mitigado: `add_option()` usa `option_name` único; expiração é limpa por WP-Cron |
 | Colisão de Idempotency-Key | Baixa | Alto | Hash do corpo e resposta `409` | Bloqueado: a chave é persistida após materialização; requer claim atômico e estado de processamento |
 | Falha parcial entre formulário e mapping | Média | Alto | Estado `FAILED`, `form_id` e reconciliação | Parcial |
 | Resultado desconhecido após clone sem mapping | Média | Alto | Não clonar novamente; reconciliação manual até haver descoberta segura | Mitigado |

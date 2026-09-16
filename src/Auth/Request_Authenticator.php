@@ -20,8 +20,8 @@ final class Request_Authenticator {
 
 	public function __construct(?Secret_Provider $secrets = null, ?Nonce_Store $nonces = null, ?callable $clock = null) {
 		$this->secrets = $secrets ?? new Secret_Provider();
-		$this->nonces = $nonces ?? new Nonce_Store();
 		$this->clock = $clock ?? static fn (): int => time();
+		$this->nonces = $nonces ?? new Nonce_Store($this->clock);
 	}
 
 	/** @return true|\WP_Error */
@@ -57,7 +57,7 @@ final class Request_Authenticator {
 		if (! hash_equals($expected, $signature)) {
 			return $this->unauthorized();
 		}
-		if (! $this->nonces->claim($nonce)) {
+		if (! $this->nonces->claim($nonce, (int) $timestamp + self::MAX_CLOCK_SKEW_SECONDS)) {
 			return $this->unauthorized();
 		}
 
