@@ -6,14 +6,15 @@
 | Duplicação de Resource | Média | Alto | Mapping idempotente e reconciliação antes de escrita | Pendente |
 | Multiplicação de capacidade entre CRES | Média | Alto | Um `class_key`, um Resource Plan e teste de capacidade única | Parcial |
 | Clone compartilhar Resource inesperadamente | Média | Alto | Teste de clone em fixture descartável | Pendente |
-| Retry duplicar formulário | Média | Alto | Chave única de materialização e reconciliação | Parcial |
+| Retry duplicar formulário | Média | Alto | Reserva ambígua sem `form_id` bloqueia clone e exige reconciliação | Mitigado |
 | IDs de field mudarem | Alta | Médio | Descoberta por `adminLabel`, nunca IDs fixos | Implementado |
 | `adminLabel` ausente ou ambíguo | Média | Alto | Validação prévia e erro controlado | Implementado |
 | Drift manual de fields/choices | Média | Médio | Fingerprint, detecção e reconciliação futura | Parcial |
 | Redução abaixo do consumo | Média | Alto | Leitura oficial e bloqueio de regra de negócio | Bloqueado |
-| Replay de requisição | Baixa | Alto | HMAC, timestamp e nonce | Parcial: revisar atomicidade do claim |
-| Colisão de Idempotency-Key | Baixa | Alto | Hash do corpo e resposta `409` | Implementado |
+| Replay de requisição | Baixa | Alto | HMAC, timestamp e nonce | Bloqueado: claim por transient usa leitura e escrita separadas, sem reserva atômica |
+| Colisão de Idempotency-Key | Baixa | Alto | Hash do corpo e resposta `409` | Bloqueado: a chave é persistida após materialização; requer claim atômico e estado de processamento |
 | Falha parcial entre formulário e mapping | Média | Alto | Estado `FAILED`, `form_id` e reconciliação | Parcial |
+| Resultado desconhecido após clone sem mapping | Média | Alto | Não clonar novamente; reconciliação manual até haver descoberta segura | Mitigado |
 | Acoplamento com FlowSheet | Média | Médio | Contrato e fase própria | Não iniciado |
 | Acoplamento com InscriHub | Média | Médio | Contrato e fase própria | Não iniciado |
 | WP-Cron de produção | Média | Médio | Cron real e checklist de produção | Pendente |

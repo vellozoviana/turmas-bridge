@@ -17,6 +17,12 @@ hash, IDs descobertos e erro sanitizado. Em retry, a mesma chave reutiliza ou
 reconcilia o form existente; não cria outro. Falha após clone preserva o ID
 para reconciliação. A atomicidade entre Gravity Forms e o banco não é assumida.
 
+Uma reserva existente sem `form_id` é resultado desconhecido: o Bridge não cria
+outro clone automaticamente e retorna `reconciliation_required`. Essa proteção
+evita duplicação silenciosa após interrupção entre a intenção persistida e a
+gravação do mapping. A descoberta automática de um formulário órfão por
+marcador técnico ainda depende de contrato público validado do Gravity Forms.
+
 O título usa apenas os dados do contrato v1: `Inscrições {ano} — {código}`.
 Um nome descritivo de Formação exigirá extensão explícita do payload em fase
 futura. Nenhum Resource, Inventory, choice definitiva, feed, Entry, FlowSheet

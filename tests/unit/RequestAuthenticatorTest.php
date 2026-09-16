@@ -94,6 +94,15 @@ final class RequestAuthenticatorTest extends TestCase {
 		);
 	}
 
+	public function test_nested_query_fixture_matches_the_canonical_hmac_contract(): void {
+		$fixture = $this->nested_fixture();
+		$canonical = Canonical_Request::build((string) $fixture['method'], (string) $fixture['route'], (array) $fixture['query'], (string) $fixture['timestamp'], (string) $fixture['nonce'], (string) $fixture['body']);
+
+		self::assertSame((string) $fixture['body_hash'], hash('sha256', (string) $fixture['body']));
+		self::assertSame((string) $fixture['canonical_request'], $canonical);
+		self::assertSame((string) $fixture['signature'], 'v1=' . hash_hmac('sha256', $canonical, (string) $fixture['test_secret']));
+	}
+
 	public function test_authenticator_uses_timing_safe_signature_comparison(): void {
 		$source = (string) file_get_contents(dirname(__DIR__, 2) . '/src/Auth/Request_Authenticator.php');
 
@@ -108,6 +117,14 @@ final class RequestAuthenticatorTest extends TestCase {
 
 	private function authenticator(): Request_Authenticator {
 		return new Request_Authenticator(clock: static fn (): int => self::NOW);
+	}
+
+	/** @return array<string, mixed> */
+	private function nested_fixture(): array {
+		$decoded = json_decode((string) file_get_contents(dirname(__DIR__, 2) . '/docs/fixtures/fase-12b-hmac-v1-nested-query.json'), true);
+		self::assertIsArray($decoded);
+
+		return $decoded;
 	}
 
 	/** @param array<string, mixed> $query */

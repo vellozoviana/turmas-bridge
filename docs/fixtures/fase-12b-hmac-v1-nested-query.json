@@ -1,0 +1,18 @@
+{
+  "method": "POST",
+  "route": "/turmas-bridge/v1/publicacoes/",
+  "query": {
+    "filter": {
+      "cre": "01",
+      "ano": "2027"
+    }
+  },
+  "canonical_query": "filter%5Bano%5D=2027&filter%5Bcre%5D=01",
+  "timestamp": "1760000123",
+  "nonce": "fixture-nested-query-0001",
+  "body": "{\"schema_version\":\"1\",\"ok\":true}",
+  "body_hash": "36260568d68b3f7a74057bd6fb20be7be9c34d537a369581e5c2009b8b0db771",
+  "canonical_request": "v1\nPOST\n/turmas-bridge/v1/publicacoes\nfilter%5Bano%5D=2027&filter%5Bcre%5D=01\n1760000123\nfixture-nested-query-0001\n36260568d68b3f7a74057bd6fb20be7be9c34d537a369581e5c2009b8b0db771",
+  "signature": "v1=e4a30dda50d678dbcf485c144b610bbddd0416c8471941c087ff2875e9e4a4a2",
+  "test_secret": "fixture-test-secret-only"
+}
