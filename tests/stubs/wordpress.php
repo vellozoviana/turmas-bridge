@@ -63,7 +63,7 @@ class wpdb {
 	public function get_var(string $query): mixed { return 1; }
 	public function insert(string $table, array $data): int|false { return 1; }
 	public function update(string $table, array $data, array $where): int|false { return 1; }
-	public function query(string $query): int|false { return 1; }
+	public function query(string $query): int|false { $GLOBALS['turmas_bridge_test_database_queries'][] = $query; return 1; }
 	public function esc_like(string $text): string { return addcslashes($text, '_%\\'); }
 }
 
@@ -95,7 +95,7 @@ function add_option(string $option, mixed $value = '', string $deprecated = '', 
 function update_option(string $option, mixed $value, mixed $autoload = null): bool { $GLOBALS['turmas_bridge_test_options'][$option] = $value; return true; }
 function current_time(string $type, bool $gmt = false): string { return '2026-01-01 00:00:00'; }
 function wp_json_encode(mixed $value, int $flags = 0): string|false { return json_encode($value, $flags); }
-function dbDelta(string $query): array { return array(); }
+function dbDelta(string $query): array { $GLOBALS['turmas_bridge_test_dbdelta'][] = $query; return array(); }
 function get_transient(string $key): mixed {
 	$entry = $GLOBALS['turmas_bridge_test_transients'][$key] ?? null;
 	if (! is_array($entry) || $entry['expires'] < time()) { unset($GLOBALS['turmas_bridge_test_transients'][$key]); return false; }

@@ -6,7 +6,7 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.4.0`. Versão do contrato REST: `v1`.
+Versão pública atual: `0.5.0`. Versão do contrato REST: `v1`. Schema local: `0.5.0`.
 
 ## Escopo atual
 
@@ -56,8 +56,10 @@ hexadecimal minúsculo.
 O timestamp deve ser Unix UTC com dez dígitos e é aceito quando a diferença
 para o relógio do servidor é de no máximo 300 segundos. O nonce aceita os
 caracteres `A-Z`, `a-z`, `0-9`, `.`, `_`, `~` e `-`, com 16 a 128 caracteres.
-Após uma assinatura válida, o nonce é gravado em transient sob chave derivada
-por SHA-256 durante cinco minutos; uma repetição nesse período recebe `401`.
+Após uma assinatura válida, o nonce é reservado por `add_option()` sob chave
+derivada por SHA-256 até o fim de sua janela autenticável; a unicidade de
+`option_name` impede dois claims concorrentes. A limpeza é agendada por
+WP-Cron e falhas de persistência recebem `401` (fail closed).
 A assinatura é `v1=` seguida do HMAC-SHA256 hexadecimal minúsculo e é
 comparada com `hash_equals`. Operações GET não usam idempotency key. O POST de
 Publicações exige `Idempotency-Key`: a mesma chave com o mesmo corpo reproduz
@@ -125,6 +127,13 @@ composer run lint
 composer run typecheck
 composer test
 ```
+
+## Idempotência de Publicação
+
+O schema `0.5.0` reserva a `Idempotency-Key` antes de qualquer materialização.
+O ciclo, detalhes de migration, respostas e reconciliação estão em
+`docs/fase-12b-idempotencia.md`. Uma retry legítima usa novo timestamp e nonce,
+mas mantém a mesma Idempotency-Key para o mesmo comando lógico.
 
 ## Pendências para fases posteriores
 

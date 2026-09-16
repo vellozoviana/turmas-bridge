@@ -18,10 +18,12 @@ O schema `1` usa `publication_key` `{ano}:{codigo_formacao}` e `class_key`
 capacidade total, CRES com zeros preservados e oito datas ISO (`YYYY-MM-DD`).
 Não leva PII, Entries, secrets ou assinatura.
 
-`wp_turmas_bridge_idempotency` armazena apenas chave, hash do body, resposta
-sanitizada, status e timestamps. Chave+hash iguais retornam a resposta original
-com `idempotent_replay: true`; a mesma chave com hash diferente retorna 409.
-Retenção/limpeza será definida antes da operação contínua em produção.
+`wp_turmas_bridge_idempotency` armazena chave, hash do body, `publication_key`,
+estado, resposta sanitizada e timestamps. A key é reservada atomicamente antes
+da materialização; chave+hash iguais retornam processamento, replay ou
+reconciliação conforme o estado. A mesma chave com hash diferente retorna 409.
+O ciclo detalhado está em `fase-12b-idempotencia.md`. Retenção/limpeza de
+registros de sucesso continua pendente de decisão operacional.
 
 Erros: 401 para autenticação/replay de nonce, 400 para header/JSON inválido,
 409 para conflito de idempotência, 422 para contrato inválido e 500 para falha
