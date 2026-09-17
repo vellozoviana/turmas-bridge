@@ -24,6 +24,9 @@ final class SchemaTest extends TestCase {
 		self::assertStringContainsString('processing_started_at datetime DEFAULT NULL', $statement);
 		self::assertStringContainsString('reconciliation_at datetime DEFAULT NULL', $statement);
 		self::assertStringContainsString('UNIQUE KEY idempotency_key (idempotency_key)', $statement);
+		self::assertStringContainsString('UNIQUE KEY class_key (class_key)', $this->inventory_statement());
+		self::assertStringContainsString('resource_id bigint(20) unsigned DEFAULT NULL', $this->inventory_statement());
+		self::assertStringContainsString('UNIQUE KEY uq_resource_id (resource_id)', $this->inventory_statement());
 		self::assertSame(Schema::VERSION, $GLOBALS['turmas_bridge_test_options'][Schema::OPTION_NAME]);
 	}
 
@@ -33,11 +36,15 @@ final class SchemaTest extends TestCase {
 		$state_updates = array_filter($GLOBALS['turmas_bridge_test_database_queries'], static fn (string $query): bool => str_contains($query, "SET state = 'SUCCEEDED'"));
 
 		self::assertCount(2, $state_updates);
-		self::assertCount(4, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertCount(6, $GLOBALS['turmas_bridge_test_dbdelta']);
 	}
 
 	private function idempotency_statement(): string {
 		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_idempotency')) return $statement;
 		self::fail('Schema de idempotência não encontrado.');
+	}
+	private function inventory_statement(): string {
+		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_inventory_resources')) return $statement;
+		self::fail('Schema de mapeamento de inventário não encontrado.');
 	}
 }

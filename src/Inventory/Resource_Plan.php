@@ -8,11 +8,12 @@ namespace TurmasBridge\Inventory;
 final class Resource_Plan {
 	private Resource_Identity $identity;
 	private int $capacity;
+	private ?int $form_id;
 	/** @var list<Resource_Representation> */
 	private array $representations;
 
 	/** @param list<Resource_Representation> $representations */
-	public function __construct(Resource_Identity $identity, int $capacity, array $representations) {
+	public function __construct(Resource_Identity $identity, int $capacity, array $representations, ?int $form_id = null) {
 		if ($capacity < 1 || $representations === array()) {
 			throw new \InvalidArgumentException('O plano de Resource deve ter capacidade positiva e representações.');
 		}
@@ -27,10 +28,16 @@ final class Resource_Plan {
 		$this->identity = $identity;
 		$this->capacity = $capacity;
 		$this->representations = $representations;
+		$this->form_id = $form_id;
 	}
 
 	public function identity(): Resource_Identity { return $this->identity; }
 	public function capacity(): int { return $this->capacity; }
+	public function form_id(): ?int { return $this->form_id; }
+	public function for_form(int $form_id): self {
+		if ($form_id < 1) throw new \InvalidArgumentException('O formulário do plano de Resource é inválido.');
+		return new self($this->identity, $this->capacity, $this->representations, $form_id);
+	}
 	/** @return list<Resource_Representation> */
 	public function representations(): array { return $this->representations; }
 	/** @return array{class_key:string,capacity:int,representations:list<array{cre:string,field_id:string,choice_value:string}>} */

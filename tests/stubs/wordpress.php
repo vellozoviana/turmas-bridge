@@ -107,3 +107,9 @@ function wp_schedule_event(int $timestamp, string $recurrence, string $hook): bo
 function is_wp_error(mixed $thing): bool { return $thing instanceof WP_Error; }
 function wp_generate_uuid4(): string { return '11111111-1111-4111-8111-111111111111'; }
 function plugin_dir_path(string $file): string { return dirname($file) . DIRECTORY_SEPARATOR; }
+function get_post_type(int $post_id): string|false { return false; }
+function get_posts(array $args = array()): array { return array(); }
+function get_post_meta(int $post_id, string $key = '', bool $single = false): mixed { return $single ? '' : array(); }
+function update_post_meta(int $post_id, string $key, mixed $value): int|bool { return 1; }
+function wp_insert_post(array $postarr, bool $wp_error = false): int|WP_Error { return 1; }
+function do_action(string $hook, mixed ...$args): void {}

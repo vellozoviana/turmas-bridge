@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TurmasBridge\Database;
 
 final class Schema {
-	public const VERSION = '0.5.0';
+	public const VERSION = '0.6.0';
 	public const OPTION_NAME = 'turmas_bridge_schema_version';
 
 	public static function install(): void {
@@ -50,6 +50,24 @@ final class Schema {
 			PRIMARY KEY  (id),
 			UNIQUE KEY publication_key (publication_key),
 			KEY form_id (form_id),
+			KEY status (status)
+		) {$charset_collate};");
+		$inventory_resources = $wpdb->prefix . 'turmas_bridge_inventory_resources';
+		dbDelta("CREATE TABLE {$inventory_resources} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			publication_key varchar(80) NOT NULL,
+			class_key varchar(120) NOT NULL,
+			resource_id bigint(20) unsigned DEFAULT NULL,
+			form_id bigint(20) unsigned NOT NULL,
+			status varchar(32) NOT NULL,
+			last_error_code varchar(100) DEFAULT NULL,
+			last_reconciled_at datetime DEFAULT NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY class_key (class_key),
+			KEY publication_key (publication_key),
+			UNIQUE KEY uq_resource_id (resource_id),
 			KEY status (status)
 		) {$charset_collate};");
 		update_option(self::OPTION_NAME, self::VERSION, false);

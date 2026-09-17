@@ -2,9 +2,9 @@
 
 ## Limites
 
-Esta entrega prepara somente o domínio local do Bridge. Não instala nem chama
-Gravity Forms, GP Inventory, FlowSheet ou APIs proprietárias. A Fase 12D-B real
-continua bloqueada até existir laboratório descartável e autorizado.
+Esta entrega prepara somente o domínio local do Bridge. A implementação real
+de GP Inventory fica na Fase 12D-C; este documento não é contrato para os
+internals proprietários.
 
 ## Arquitetura encontrada
 

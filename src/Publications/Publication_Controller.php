@@ -10,6 +10,8 @@ use TurmasBridge\Materialization\Materialization_Repository;
 use TurmasBridge\Materialization\WordPress_Gravity_Forms_Gateway;
 use TurmasBridge\Choices\Publication_Choice_Preparer;
 use TurmasBridge\Choices\Publication_Choice_Service;
+use TurmasBridge\Inventory\Publication_Inventory_Preparer;
+use TurmasBridge\Inventory\Publication_Inventory_Service;
 
 final class Publication_Controller {
 	public const IDEMPOTENCY_HEADER = 'idempotency-key';
@@ -17,10 +19,11 @@ final class Publication_Controller {
 	private Publication_Command_Store $store;
 	private Publication_Materializer $materializer;
 	private Publication_Choice_Preparer $choices;
+	private Publication_Inventory_Preparer $inventory;
 	/** @var callable():int */
 	private $clock;
 
-	public function __construct(?Publication_Command_Store $store = null, ?Publication_Materializer $materializer = null, ?Publication_Choice_Preparer $choices = null, ?callable $clock = null) { $this->store = $store ?? new Idempotency_Repository(); $this->materializer = $materializer ?? new Materialization_Service(); $this->choices = $choices ?? new Publication_Choice_Service(new Materialization_Repository(), new WordPress_Gravity_Forms_Gateway()); $this->clock = $clock ?? static fn (): int => time(); }
+	public function __construct(?Publication_Command_Store $store = null, ?Publication_Materializer $materializer = null, ?Publication_Choice_Preparer $choices = null, ?callable $clock = null, ?Publication_Inventory_Preparer $inventory = null) { $this->store = $store ?? new Idempotency_Repository(); $this->materializer = $materializer ?? new Materialization_Service(); $this->choices = $choices ?? new Publication_Choice_Service(new Materialization_Repository(), new WordPress_Gravity_Forms_Gateway()); $this->inventory = $inventory ?? new Publication_Inventory_Service(); $this->clock = $clock ?? static fn (): int => time(); }
 
 	/** @return \WP_REST_Response|\WP_Error */
 	public function receive(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
@@ -58,7 +61,13 @@ final class Publication_Controller {
 			if ($this->store->require_reconciliation($key, $hash, $choice_result->get_error_code())) return $this->error('turmas_bridge_reconciliation_required', 'A materialização requer reconciliação antes de nova tentativa.', 409);
 			return $this->error('turmas_bridge_command_store_failed', 'Não foi possível registrar o resultado do comando.', 500);
 		}
+		$inventory_result = $this->inventory->prepare($payload);
+		if (is_wp_error($inventory_result)) {
+			if ($this->store->require_reconciliation($key, $hash, $inventory_result->get_error_code())) return $this->error('turmas_bridge_reconciliation_required', 'A preparação de inventário requer reconciliação antes de nova tentativa.', 409);
+			return $this->error('turmas_bridge_command_store_failed', 'Não foi possível registrar o resultado do comando.', 500);
+		}
 		$response['choices_prepared'] = true;
+		$response['inventory_prepared'] = true;
 		if (! $this->store->succeed($key, $hash, 201, $response)) {
 			if ($this->store->require_reconciliation($key, $hash, 'turmas_bridge_success_persist_failed')) return $this->error('turmas_bridge_reconciliation_required', 'A materialização requer reconciliação antes de nova tentativa.', 409);
 			return $this->error('turmas_bridge_command_store_failed', 'Não foi possível concluir o comando.', 500);

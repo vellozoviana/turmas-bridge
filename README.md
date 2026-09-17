@@ -6,7 +6,7 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.5.0`. Versão do contrato REST: `v1`. Schema local: `0.5.0`.
+Versão pública atual: `0.6.0`. Versão do contrato REST: `v1`. Schema local: `0.6.0`.
 
 ## Escopo atual
 
@@ -17,14 +17,15 @@ O Bridge disponibiliza as operações autenticadas:
 - `POST /wp-json/turmas-bridge/v1/publicacoes`.
 
 O `POST` valida o contrato, protege a requisição por HMAC e Idempotency-Key,
-materializa uma cópia técnica **inativa** do template e prepara choices por
-CRE usando `adminLabel`. Ele não publica o formulário, não lê Entries nem
-dados pessoais e não integra GP Inventory, FlowSheet ou InscriHub.
+materializa uma cópia técnica **inativa** do template, prepara choices por
+CRE usando `adminLabel` e configura o Resource compartilhado de cada Turma
+lógica quando o runtime GP Inventory homologado está disponível. Ele não
+publica o formulário, não lê dados pessoais, FlowSheet ou InscriHub.
 
-A Fase 12D-B (Advanced Resources e capacidade compartilhada) permanece
-**bloqueada**: não existe ambiente autorizado/licenciado para validar a
-persistência e a escrita programática do GP Inventory. Não há workaround por
-SQL, inventários simples ou contador paralelo.
+O adapter de GP Inventory foi validado exclusivamente em laboratório local
+com fixtures fictícias. Sua compatibilidade depende dos internals observados
+do fornecedor; a estratégia de drift, concorrência e upgrade está documentada
+em `docs/fase-12d-c-adapter-gp-inventory.md`.
 
 ## Contrato HMAC v1
 
@@ -113,8 +114,9 @@ trace. Um template que não possa ser convertido em manifesto também retorna
 
 ### Ambiente local e dependências
 
-Na estação local atual, Gravity Forms, GP Inventory e FlowSheet não estão
-instalados. A convenção de campos para choices é `turma_cre_XX`, descoberta
+Na estação local de homologação, Gravity Forms e GP Inventory foram instalados
+somente para fixtures fictícias. FlowSheet não faz parte desta fase. A
+convenção de campos para choices é `turma_cre_XX`, descoberta
 por `adminLabel`; IDs de fields não são constantes. Qualquer referência
 histórica a IDs institucionais é evidência de reconhecimento, não configuração
 de execução. FlowSheet e InscriHub permanecem pendentes e não foram alterados.
@@ -130,7 +132,8 @@ composer test
 
 ## Idempotência de Publicação
 
-O schema `0.5.0` reserva a `Idempotency-Key` antes de qualquer materialização.
+O schema `0.6.0` reserva a `Idempotency-Key` antes de qualquer materialização e
+mantém o mapping persistente de Resources compartilhados.
 O ciclo, detalhes de migration, respostas e reconciliação estão em
 `docs/fase-12b-idempotencia.md`. Uma retry legítima usa novo timestamp e nonce,
 mas mantém a mesma Idempotency-Key para o mesmo comando lógico.
@@ -139,5 +142,5 @@ mas mantém a mesma Idempotency-Key para o mesmo comando lógico.
 
 - inspecionar os modelos Gravity Forms e os metadados de GP Inventory,
   FlowSheet e InscriHub no ambiente de homologação;
-- validar Advanced Resources em laboratório autorizado e só então implementar a Fase 12D-B;
+- homologar o adapter de inventário em ambiente autorizado antes de qualquer uso institucional;
 - definir reconciliação operacional, FlowSheet, InscriHub, ativação e homologação end-to-end em fases próprias.

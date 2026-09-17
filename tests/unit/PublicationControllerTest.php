@@ -9,25 +9,26 @@ use TurmasBridge\Publications\Publication_Command_Store;
 use TurmasBridge\Publications\Publication_Controller;
 use TurmasBridge\Materialization\Publication_Materializer;
 use TurmasBridge\Choices\Publication_Choice_Preparer;
+use TurmasBridge\Inventory\Publication_Inventory_Preparer;
 
 final class PublicationControllerTest extends TestCase {
 	protected function setUp(): void { $GLOBALS['turmas_bridge_publication_order'] = array(); }
 
 	public function test_valid_command_is_accepted_then_replayed_without_reprocessing(): void {
 		$store = new Memory_Command_Store();
-		$controller = new Publication_Controller($store, new Fake_Materializer(), new Fake_Choice_Preparer());
+		$controller = new Publication_Controller($store, new Fake_Materializer(), new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
 		$first = $controller->receive($this->request($this->payload()));
 		$again = $controller->receive($this->request($this->payload()));
 		self::assertSame(201, $first->get_status());
 		self::assertFalse($first->get_data()['idempotent_replay']);
 		self::assertTrue($again->get_data()['idempotent_replay']);
 		self::assertSame(1, $store->writes);
-		self::assertSame(array('reserve', 'begin', 'materialize', 'choices', 'succeed', 'reserve'), $GLOBALS['turmas_bridge_publication_order']);
+		self::assertSame(array('reserve', 'begin', 'materialize', 'choices', 'inventory', 'succeed', 'reserve'), $GLOBALS['turmas_bridge_publication_order']);
 	}
 
 	public function test_same_key_with_different_payload_is_conflict(): void {
 		$store = new Memory_Command_Store();
-		$controller = new Publication_Controller($store, new Fake_Materializer(), new Fake_Choice_Preparer());
+		$controller = new Publication_Controller($store, new Fake_Materializer(), new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
 		$controller->receive($this->request($this->payload()));
 		$changed = $this->payload(); $changed['classes'][0]['capacity'] = 31;
 		$result = $controller->receive($this->request($changed));
@@ -38,7 +39,7 @@ final class PublicationControllerTest extends TestCase {
 
 	/** @dataProvider invalid_payloads */
 	public function test_invalid_contract_is_rejected(array $payload, string $expected): void {
-		$result = (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer(), new Fake_Choice_Preparer()))->receive($this->request($payload, 'idempotency-invalid-0001'));
+		$result = (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer(), new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()))->receive($this->request($payload, 'idempotency-invalid-0001'));
 		self::assertInstanceOf(\WP_Error::class, $result);
 		self::assertSame($expected, $result->get_error_code());
 	}
@@ -59,17 +60,17 @@ final class PublicationControllerTest extends TestCase {
 	public function test_missing_key_and_invalid_json_are_controlled_errors(): void {
 		$missing = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes');
 		$missing->set_body('{}');
-		self::assertSame('turmas_bridge_idempotency_key_required', (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer(), new Fake_Choice_Preparer()))->receive($missing)->get_error_code());
+		self::assertSame('turmas_bridge_idempotency_key_required', (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer(), new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()))->receive($missing)->get_error_code());
 		$invalid = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes');
 		$invalid->set_header('Idempotency-Key', 'idempotency-json-00001'); $invalid->set_body('{');
-		self::assertSame('turmas_bridge_invalid_json', (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer(), new Fake_Choice_Preparer()))->receive($invalid)->get_error_code());
+		self::assertSame('turmas_bridge_invalid_json', (new Publication_Controller(new Memory_Command_Store(), new Fake_Materializer(), new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()))->receive($invalid)->get_error_code());
 	}
 
 	public function test_processing_record_does_not_start_a_second_materialization(): void {
 		$store = new Memory_Command_Store(); $payload = $this->payload(); $body = (string) json_encode($payload, JSON_UNESCAPED_SLASHES); $hash = hash('sha256', $body);
 		$store->records['idempotency-processing-01'] = array('idempotency_key' => 'idempotency-processing-01', 'payload_hash' => $hash, 'state' => Publication_Command_Store::MATERIALIZING, 'updated_at' => '2025-10-09 08:53:20', 'response_status' => 202, 'response_body' => '{"status":"processing"}');
 		$materializer = new Fake_Materializer();
-		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), static fn (): int => 1760000000))->receive($this->request($payload, 'idempotency-processing-01'));
+		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), static fn (): int => 1760000000, new Fake_Inventory_Preparer()))->receive($this->request($payload, 'idempotency-processing-01'));
 
 		self::assertSame(202, $result->get_status()); self::assertSame(0, $materializer->calls);
 	}
@@ -78,14 +79,14 @@ final class PublicationControllerTest extends TestCase {
 		$store = new Memory_Command_Store(); $payload = $this->payload(); $body = (string) json_encode($payload, JSON_UNESCAPED_SLASHES); $hash = hash('sha256', $body);
 		$store->records['idempotency-stale-reserved'] = array('idempotency_key' => 'idempotency-stale-reserved', 'payload_hash' => $hash, 'state' => Publication_Command_Store::RESERVED, 'updated_at' => '2025-10-09 08:50:00', 'response_status' => 202, 'response_body' => '{"status":"processing"}');
 		$materializer = new Fake_Materializer();
-		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), static fn (): int => 1760000000))->receive($this->request($payload, 'idempotency-stale-reserved'));
+		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), static fn (): int => 1760000000, new Fake_Inventory_Preparer()))->receive($this->request($payload, 'idempotency-stale-reserved'));
 
 		self::assertSame(201, $result->get_status()); self::assertSame(1, $materializer->calls); self::assertContains('recover_reserved', $store->events);
 	}
 
 	public function test_ambiguous_materialization_failure_requires_reconciliation_and_never_retries(): void {
 		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer(); $materializer->error = new \WP_Error('turmas_bridge_clone_outcome_unknown', 'Erro fictício.');
-		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer()); $key = 'idempotency-ambiguous-01';
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()); $key = 'idempotency-ambiguous-01';
 
 		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), $key))->get_error_code());
 		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), $key))->get_error_code());
@@ -94,7 +95,7 @@ final class PublicationControllerTest extends TestCase {
 
 	public function test_safe_pre_side_effect_error_returns_to_reserved_for_a_later_retry(): void {
 		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer(); $materializer->error = new \WP_Error('turmas_bridge_gravity_forms_unavailable', 'Indisponível.');
-		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer()); $key = 'idempotency-safe-retry-01';
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()); $key = 'idempotency-safe-retry-01';
 
 		self::assertSame('turmas_bridge_gravity_forms_unavailable', $controller->receive($this->request($this->payload(), $key))->get_error_code());
 		$materializer->error = null;
@@ -104,7 +105,7 @@ final class PublicationControllerTest extends TestCase {
 
 	public function test_materializing_write_failure_does_not_start_the_side_effect(): void {
 		$store = new Memory_Command_Store(); $store->fail_begin = true; $materializer = new Fake_Materializer();
-		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer()))->receive($this->request($this->payload(), 'idempotency-begin-failure'));
+		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()))->receive($this->request($this->payload(), 'idempotency-begin-failure'));
 
 		self::assertSame('turmas_bridge_command_store_failed', $result->get_error_code()); self::assertSame(0, $materializer->calls);
 	}
@@ -113,14 +114,14 @@ final class PublicationControllerTest extends TestCase {
 		$store = new Memory_Command_Store(); $payload = $this->payload(); $body = (string) json_encode($payload, JSON_UNESCAPED_SLASHES); $hash = hash('sha256', $body);
 		$store->records['idempotency-stale-materializing'] = array('idempotency_key' => 'idempotency-stale-materializing', 'payload_hash' => $hash, 'state' => Publication_Command_Store::MATERIALIZING, 'updated_at' => '2025-10-09 08:50:00', 'response_status' => 202, 'response_body' => '{"status":"processing"}');
 		$materializer = new Fake_Materializer();
-		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), static fn (): int => 1760000000))->receive($this->request($payload, 'idempotency-stale-materializing'));
+		$result = (new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), static fn (): int => 1760000000, new Fake_Inventory_Preparer()))->receive($this->request($payload, 'idempotency-stale-materializing'));
 
 		self::assertSame('turmas_bridge_reconciliation_required', $result->get_error_code()); self::assertSame(0, $materializer->calls); self::assertSame(Publication_Command_Store::RECONCILIATION_REQUIRED, $store->records['idempotency-stale-materializing']['state']);
 	}
 
 	public function test_succeeded_persistence_failure_requires_reconciliation_without_retrying(): void {
 		$store = new Memory_Command_Store(); $store->fail_succeed = true; $materializer = new Fake_Materializer(); $key = 'idempotency-success-store-fail';
-		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer());
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
 
 		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), $key))->get_error_code());
 		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), $key))->get_error_code());
@@ -128,7 +129,7 @@ final class PublicationControllerTest extends TestCase {
 	}
 
 	public function test_ten_same_key_retries_replay_one_succeeded_materialization(): void {
-		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer(); $controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer());
+		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer(); $controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
 		$first = $controller->receive($this->request($this->payload(), 'idempotency-ten-retries-01'));
 
 		self::assertSame(201, $first->get_status());
@@ -174,4 +175,8 @@ final class Fake_Materializer implements Publication_Materializer {
 
 final class Fake_Choice_Preparer implements Publication_Choice_Preparer {
 	public function prepare(array $payload): array|\WP_Error { $GLOBALS['turmas_bridge_publication_order'][] = 'choices'; return array('publication_key' => $payload['publication']['publication_key'], 'status' => 'choices_prepared', 'idempotent_replay' => false, 'resource_plans' => array()); }
+}
+
+final class Fake_Inventory_Preparer implements Publication_Inventory_Preparer {
+	public function prepare(array $payload): array|\WP_Error { $GLOBALS['turmas_bridge_publication_order'][] = 'inventory'; return array('publication_key' => $payload['publication']['publication_key'], 'status' => 'inventory_prepared', 'resources' => array()); }
 }

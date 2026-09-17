@@ -24,20 +24,19 @@ atualização convergente evitam writes concorrentes cegos. O formulário deve j
 estar inativo; a atualização preserva essa propriedade. Falhas prévias não
 alteram o formulário; falha na API deixa o fingerprint inalterado para retry.
 
-Pendência da 12D-B: vincular as representations ao GP Inventory Advanced
-Resource compartilhado, sem multiplicar a capacidade da Turma.
+O vínculo das representations ao GP Inventory Advanced compartilhado é tratado
+pela Fase 12D-C, em adapter isolado e com capacidade única por `class_key`.
 
-## Estado de homologação — 12D-B0.3
+## Estado de homologação — após 12D-C
 
 - **12D-A:** concluída.
-- **12D-B0:** homologação parcial.
-- **12D-B0.3:** bloqueada por dependência externa.
-- **12D-B:** bloqueada; o mecanismo de escrita ainda não foi homologado.
+- **12D-B0:** domínio concluído.
+- **12D-B0.3:** laboratório encerrado após validação da dependência.
+- **12D-C:** adapter real validado no laboratório local; revisão pré-checkpoint pendente.
 
-O bloqueador é a ausência de um ambiente local ou descartável, oficialmente
-autorizado, com Gravity Forms e GP Inventory. Sem ele, não é possível homologar
-com segurança a persistência de Resources, limites de choices, associação
-Resource → field ou escrita programática de capacidade.
+O laboratório local autorizado comprova persistência de Resources, limites de
+choices, associação Resource → field e escrita programática de capacidade. A
+compatibilidade futura do GP Inventory continua dependente de seus internals.
 
 Evidências preservadas da homologação institucional: as representations CRE
 01, 02 e 03 do Form 297 usam Advanced Inventory, o mesmo Resource fictício e o
