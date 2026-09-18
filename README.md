@@ -6,7 +6,7 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.6.0`. Versão do contrato REST: `v1`. Schema local: `0.6.0`.
+Versão pública atual: `0.7.1`. Versão do contrato REST: `v1`. Schema local: `0.6.1`.
 
 ## Escopo atual
 
@@ -15,12 +15,17 @@ O Bridge disponibiliza as operações autenticadas:
 - `GET /wp-json/turmas-bridge/v1/ping`;
 - `GET /wp-json/turmas-bridge/v1/formularios/{id}`.
 - `POST /wp-json/turmas-bridge/v1/publicacoes`.
+- `GET /wp-json/turmas-bridge/v1/publicacoes/{publication_key}`.
 
 O `POST` valida o contrato, protege a requisição por HMAC e Idempotency-Key,
 materializa uma cópia técnica **inativa** do template, prepara choices por
 CRE usando `adminLabel` e configura o Resource compartilhado de cada Turma
 lógica quando o runtime GP Inventory homologado está disponível. Ele não
 publica o formulário, não lê dados pessoais, FlowSheet ou InscriHub.
+
+O GET de Publicação é somente leitura: retorna o estado persistido, o
+`form_id` e o estado efetivo do formulário. Ele não promove uma Publicação a
+`PUBLISHED`; materialização continua sendo um estado técnico.
 
 O adapter de GP Inventory foi validado exclusivamente em laboratório local
 com fixtures fictícias. Sua compatibilidade depende dos internals observados
@@ -132,7 +137,7 @@ composer test
 
 ## Idempotência de Publicação
 
-O schema `0.6.0` reserva a `Idempotency-Key` antes de qualquer materialização e
+O schema `0.6.1` reserva a `Idempotency-Key` antes de qualquer materialização e
 mantém o mapping persistente de Resources compartilhados.
 O ciclo, detalhes de migration, respostas e reconciliação estão em
 `docs/fase-12b-idempotencia.md`. Uma retry legítima usa novo timestamp e nonce,

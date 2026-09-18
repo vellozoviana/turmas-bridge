@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TurmasBridge\Database;
 
 final class Schema {
-	public const VERSION = '0.6.0';
+	public const VERSION = '0.6.1';
 	public const OPTION_NAME = 'turmas_bridge_schema_version';
 
 	public static function install(): void {
@@ -52,6 +52,9 @@ final class Schema {
 			KEY form_id (form_id),
 			KEY status (status)
 		) {$charset_collate};");
+		if (! in_array('choices_fingerprint', (array) $wpdb->get_col("SHOW COLUMNS FROM {$materializations}"), true)) {
+			$wpdb->query("ALTER TABLE {$materializations} ADD COLUMN choices_fingerprint char(64) DEFAULT NULL AFTER payload_hash");
+		}
 		$inventory_resources = $wpdb->prefix . 'turmas_bridge_inventory_resources';
 		dbDelta("CREATE TABLE {$inventory_resources} (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,

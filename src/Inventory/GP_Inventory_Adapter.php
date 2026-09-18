@@ -45,7 +45,7 @@ final class GP_Inventory_Adapter implements Inventory_Gateway {
 			if ($plan->capacity() < $observed['consumed']) {
 				throw new Inventory_Integration_Exception('turmas_bridge_capacity_below_consumed', 'A capacidade solicitada é inferior ao consumo externo observado.');
 			}
-			if (! $observed['healthy'] && in_array((string) ($observed['reason'] ?? ''), array('field_resource_drift', 'choice_value_drift', 'representation_missing', 'form_active'), true)) {
+			if (! $created && ! $observed['healthy'] && in_array((string) ($observed['reason'] ?? ''), array('field_resource_drift', 'choice_value_drift', 'representation_missing', 'form_active'), true)) {
 				$this->mappings->reconciliation_required($identity, (string) $observed['reason']);
 				throw new Inventory_Integration_Exception('turmas_bridge_inventory_reconciliation_required', 'O Resource possui drift semântico e exige reconciliação manual.');
 			}

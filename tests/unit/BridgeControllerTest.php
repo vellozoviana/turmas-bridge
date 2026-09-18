@@ -21,11 +21,20 @@ final class BridgeControllerTest extends TestCase {
 	public function test_routes_are_read_only_and_authenticated(): void {
 		Bridge_Controller::register_routes();
 
-		self::assertCount(3, $GLOBALS['turmas_bridge_test_routes']);
+		self::assertCount(4, $GLOBALS['turmas_bridge_test_routes']);
 		foreach ($GLOBALS['turmas_bridge_test_routes'] as $index => $route) {
 			self::assertSame($index === 2 ? 'POST' : 'GET', $route['arguments']['methods']);
 			self::assertSame(array(Bridge_Controller::class, 'authenticate'), $route['arguments']['permission_callback']);
 		}
+	}
+
+	public function test_publication_status_rejects_invalid_key_without_external_access(): void {
+		$request = $this->signed_request('/turmas-bridge/v1/publicacoes/invalida');
+		$request->set_param('publication_key', 'invalida');
+		$result = Bridge_Controller::publication_status($request);
+
+		self::assertInstanceOf(\WP_Error::class, $result);
+		self::assertSame('turmas_bridge_invalid_publication_key', $result->get_error_code());
 	}
 
 	public function test_ping_reports_availability_without_sensitive_configuration(): void {

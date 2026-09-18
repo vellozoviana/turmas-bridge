@@ -23,6 +23,11 @@ final class GPInventoryAdapterTest extends TestCase {
 		self::assertSame(1, $operations->creates); self::assertSame(1, $operations->synchronizes);
 		self::assertSame('HEALTHY', $mapping->record['status']);
 	}
+	public function test_new_resource_with_initial_field_drift_is_synchronized(): void {
+		$mapping = new Memory_Inventory_Mapping(); $operations = new Fake_GP_Inventory_Operations(); $operations->healthy = false; $operations->reason = 'field_resource_drift';
+		$result = (new GP_Inventory_Adapter($mapping, $operations))->ensure($this->plan());
+		self::assertSame(91, $result->resource_id()); self::assertSame(1, $operations->synchronizes); self::assertSame('HEALTHY', $mapping->record['status']);
+	}
 	public function test_orphan_resource_is_adopted_without_creating_a_duplicate(): void {
 		$mapping = new Memory_Inventory_Mapping(); $operations = new Fake_GP_Inventory_Operations(); $operations->orphan_resource = 77;
 		$result = (new GP_Inventory_Adapter($mapping, $operations))->ensure($this->plan());

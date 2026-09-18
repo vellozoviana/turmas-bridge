@@ -7,6 +7,7 @@ namespace TurmasBridge\Api;
 use TurmasBridge\Auth\Request_Authenticator;
 use TurmasBridge\Gravity\Template_Manifest;
 use TurmasBridge\Publications\Publication_Controller;
+use TurmasBridge\Publications\Publication_Status_Reader;
 
 final class Bridge_Controller {
 	public static function register_routes(): void {
@@ -24,6 +25,11 @@ final class Bridge_Controller {
 			'methods' => 'POST',
 			'permission_callback' => array(self::class, 'authenticate'),
 			'callback' => array(self::class, 'publication'),
+		));
+		register_rest_route('turmas-bridge/v1', '/publicacoes/(?P<publication_key>[0-9]{4}:[A-Z0-9_-]{1,50})', array(
+			'methods' => 'GET',
+			'permission_callback' => array(self::class, 'authenticate'),
+			'callback' => array(self::class, 'publication_status'),
 		));
 	}
 
@@ -65,5 +71,12 @@ final class Bridge_Controller {
 	/** @return \WP_REST_Response|\WP_Error */
 	public static function publication(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		return (new Publication_Controller())->receive($request);
+	}
+
+	/** @return \WP_REST_Response|\WP_Error */
+	public static function publication_status(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
+		$key = (string) $request->get_param('publication_key');
+		$result = (new Publication_Status_Reader())->read($key);
+		return is_wp_error($result) ? $result : new \WP_REST_Response(array('ok' => true, 'publication' => $result, 'request_id' => wp_generate_uuid4()), 200);
 	}
 }

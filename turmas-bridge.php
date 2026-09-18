@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Turmas Bridge
  * Description: Ponte HTTPS autenticada para a integração entre TURMAS-EPF e o site público.
- * Version: 0.6.0
+ * Version: 0.7.1
  * Author: Turmas EPF
  * Text Domain: turmas-bridge
  */
@@ -13,7 +13,7 @@ if (! defined('ABSPATH')) {
 	exit;
 }
 
-define('TURMAS_BRIDGE_VERSION', '0.6.0');
+define('TURMAS_BRIDGE_VERSION', '0.7.1');
 define('TURMAS_BRIDGE_API_VERSION', 'v1');
 define('TURMAS_BRIDGE_FILE', __FILE__);
 define('TURMAS_BRIDGE_DIR', plugin_dir_path(__FILE__));
