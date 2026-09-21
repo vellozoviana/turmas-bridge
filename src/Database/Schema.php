@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TurmasBridge\Database;
 
 final class Schema {
-	public const VERSION = '0.6.1';
+	public const VERSION = '0.7.0';
 	public const OPTION_NAME = 'turmas_bridge_schema_version';
 
 	public static function install(): void {
@@ -72,6 +72,27 @@ final class Schema {
 			KEY publication_key (publication_key),
 			UNIQUE KEY uq_resource_id (resource_id),
 			KEY status (status)
+		) {$charset_collate};");
+		$activation_operations = $wpdb->prefix . 'turmas_bridge_activation_operations';
+		dbDelta("CREATE TABLE {$activation_operations} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			operation_key varchar(128) NOT NULL,
+			publication_key varchar(80) NOT NULL,
+			gravity_form_id bigint(20) unsigned NOT NULL,
+			snapshot_fingerprint char(64) NOT NULL,
+			state varchar(32) NOT NULL DEFAULT 'PENDING',
+			error_code varchar(100) DEFAULT NULL,
+			evidence_json longtext DEFAULT NULL,
+			processing_started_at datetime DEFAULT NULL,
+			reconciliation_at datetime DEFAULT NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY operation_key (operation_key),
+			KEY publication_key (publication_key),
+			KEY state (state),
+			KEY gravity_form_id (gravity_form_id),
+			KEY updated_at (updated_at)
 		) {$charset_collate};");
 		update_option(self::OPTION_NAME, self::VERSION, false);
 	}

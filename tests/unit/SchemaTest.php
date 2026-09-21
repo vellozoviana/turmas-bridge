@@ -27,6 +27,9 @@ final class SchemaTest extends TestCase {
 		self::assertStringContainsString('UNIQUE KEY class_key (class_key)', $this->inventory_statement());
 		self::assertStringContainsString('resource_id bigint(20) unsigned DEFAULT NULL', $this->inventory_statement());
 		self::assertStringContainsString('UNIQUE KEY uq_resource_id (resource_id)', $this->inventory_statement());
+		self::assertStringContainsString('UNIQUE KEY operation_key (operation_key)', $this->activation_statement());
+		self::assertStringContainsString('snapshot_fingerprint char(64) NOT NULL', $this->activation_statement());
+		self::assertStringContainsString('KEY publication_key (publication_key)', $this->activation_statement());
 		self::assertSame(Schema::VERSION, $GLOBALS['turmas_bridge_test_options'][Schema::OPTION_NAME]);
 	}
 
@@ -36,7 +39,7 @@ final class SchemaTest extends TestCase {
 		$state_updates = array_filter($GLOBALS['turmas_bridge_test_database_queries'], static fn (string $query): bool => str_contains($query, "SET state = 'SUCCEEDED'"));
 
 		self::assertCount(2, $state_updates);
-		self::assertCount(6, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertCount(8, $GLOBALS['turmas_bridge_test_dbdelta']);
 	}
 
 	private function idempotency_statement(): string {
@@ -46,5 +49,9 @@ final class SchemaTest extends TestCase {
 	private function inventory_statement(): string {
 		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_inventory_resources')) return $statement;
 		self::fail('Schema de mapeamento de inventário não encontrado.');
+	}
+	private function activation_statement(): string {
+		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_activation_operations')) return $statement;
+		self::fail('Ledger de ativação não encontrado.');
 	}
 }
