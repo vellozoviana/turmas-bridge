@@ -12,7 +12,7 @@ use TurmasBridge\Inventory\Inventory_Status_Gateway;
 use TurmasBridge\Inventory\WordPress_Inventory_Status_Gateway;
 
 /** Read-only, conservative view of a publication's effective local state. */
-final class Publication_Status_Reader {
+final class Publication_Status_Reader implements Publication_Status_Provider {
 	private ?Materialization_Store $store;
 	private ?Gravity_Forms_Gateway $gravity;
 	private ?Inventory_Status_Gateway $inventory;

@@ -28,6 +28,11 @@ final class Publication_Inventory_Service implements Publication_Inventory_Prepa
 	}
 	public function prepare(array $payload): array|\WP_Error {
 		$key = (string) ($payload['publication']['publication_key'] ?? '');
+		if ($key === '' || ! $this->materializations->acquire_choice_lock($key)) return $this->error('turmas_bridge_publication_lock_unavailable', 'A Publicação já está em outra operação.', 409);
+		try { return $this->prepare_locked($payload, $key); } finally { $this->materializations->release_choice_lock($key); }
+	}
+	/** @param array<string,mixed> $payload @return array<string,mixed>|\WP_Error */
+	private function prepare_locked(array $payload, string $key): array|\WP_Error {
 		$record = $this->materializations->find($key);
 		if (! $record || (string) ($record['status'] ?? '') !== 'MATERIALIZED' || (int) ($record['form_id'] ?? 0) < 1) return $this->error('turmas_bridge_materialization_required', 'A Publicação ainda não possui formulário materializado.', 409);
 		$form_id = (int) $record['form_id'];
