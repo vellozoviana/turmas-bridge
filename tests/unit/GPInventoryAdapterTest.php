@@ -123,6 +123,7 @@ final class Memory_Inventory_Mapping implements Inventory_Mapping_Store {
 	public bool $locked = false;
 	public bool $discarded = false;
 	public function find(Resource_Identity $identity): ?array { return $this->record; }
+	public function list_for_publication(string $publication_key): array { return $this->record ? array($this->record) : array(); }
 	public function reserve(Resource_Identity $identity, int $form_id): bool { if ($this->record) return false; $this->record = array('publication_key' => $identity->publication_key(), 'class_key' => $identity->class_key(), 'resource_id' => null, 'form_id' => $form_id, 'status' => 'PROVISIONING'); return true; }
 	public function discard_provisioning(Resource_Identity $identity): bool { $this->discarded = true; if ($this->record !== null && $this->record['resource_id'] === null) $this->record = null; return true; }
 	public function resource_created(Resource_Identity $identity, int $resource_id, int $form_id): bool { if (! $this->record) return false; $this->record['resource_id'] = $resource_id; $this->record['form_id'] = $form_id; return true; }

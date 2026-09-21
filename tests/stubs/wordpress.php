@@ -60,6 +60,7 @@ class wpdb {
 	public function get_charset_collate(): string { return ''; }
 	public function prepare(string $query, mixed ...$arguments): string { return $query; }
 	public function get_row(string $query, string $output = ''): mixed { return null; }
+	public function get_results(string $query, string $output = ''): array { return array(); }
 	public function get_col(string $query): array { return array(); }
 	public function get_var(string $query): mixed { return 1; }
 	public function insert(string $table, array $data): int|false { return 1; }

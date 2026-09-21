@@ -7,6 +7,8 @@ namespace TurmasBridge\Inventory;
 interface Inventory_Mapping_Store {
 	/** @return array<string,mixed>|null */
 	public function find(Resource_Identity $identity): ?array;
+	/** @return list<array<string,mixed>> */
+	public function list_for_publication(string $publication_key): array;
 	public function reserve(Resource_Identity $identity, int $form_id): bool;
 	public function discard_provisioning(Resource_Identity $identity): bool;
 	public function resource_created(Resource_Identity $identity, int $resource_id, int $form_id): bool;

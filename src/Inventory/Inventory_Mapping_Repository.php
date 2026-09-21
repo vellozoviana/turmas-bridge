@@ -13,6 +13,11 @@ final class Inventory_Mapping_Repository implements Inventory_Mapping_Store {
 		$row = $this->wpdb->get_row($this->wpdb->prepare("SELECT * FROM {$this->table()} WHERE class_key = %s", $identity->class_key()), 'ARRAY_A');
 		return is_array($row) ? $row : null;
 	}
+	/** @return list<array<string,mixed>> */
+	public function list_for_publication(string $publication_key): array {
+		$rows = $this->wpdb->get_results($this->wpdb->prepare("SELECT * FROM {$this->table()} WHERE publication_key = %s ORDER BY class_key ASC", $publication_key), 'ARRAY_A');
+		return array_values(array_filter($rows, 'is_array'));
+	}
 	public function reserve(Resource_Identity $identity, int $form_id): bool {
 		$time = current_time('mysql', true);
 		return $this->wpdb->insert($this->table(), array('publication_key' => $identity->publication_key(), 'class_key' => $identity->class_key(), 'resource_id' => null, 'form_id' => $form_id, 'status' => 'PROVISIONING', 'created_at' => $time, 'updated_at' => $time)) !== false;
