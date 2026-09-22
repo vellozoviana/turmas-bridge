@@ -6,7 +6,7 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.7.1`. Versão do contrato REST: `v1`. Schema local: `0.6.1`.
+Versão pública atual: `0.9.1`. Versão do contrato REST: `v1`. Schema local: `0.8.0`.
 
 ## Escopo atual
 
@@ -16,6 +16,9 @@ O Bridge disponibiliza as operações autenticadas:
 - `GET /wp-json/turmas-bridge/v1/formularios/{id}`.
 - `POST /wp-json/turmas-bridge/v1/publicacoes`.
 - `GET /wp-json/turmas-bridge/v1/publicacoes/{publication_key}`.
+- `POST /wp-json/turmas-bridge/v1/publicacoes/{publication_key}/activation`.
+- `GET /wp-json/turmas-bridge/v1/operacoes/{operation_key}`.
+- `POST /wp-json/turmas-bridge/v1/operacoes/{operation_key}/reconciliation`.
 
 O `POST` valida o contrato, protege a requisição por HMAC e Idempotency-Key,
 materializa uma cópia técnica **inativa** do template, prepara choices por
@@ -26,6 +29,13 @@ publica o formulário, não lê dados pessoais, FlowSheet ou InscriHub.
 O GET de Publicação é somente leitura: retorna o estado persistido, o
 `form_id` e o estado efetivo do formulário. Ele não promove uma Publicação a
 `PUBLISHED`; materialização continua sendo um estado técnico.
+
+Reconciliação é uma operação separada e somente leitura. Ela registra uma
+verificação pós-ativação em `turmas_bridge_reconciliation_attempts`, sem
+alterar o ledger de ativação, Forms ou Resources. A mesma chave reproduz um
+resultado terminal; nova tentativa usa nova `Idempotency-Key`. Consulte
+`docs/fase-12f-b3b3-a-explicit-reconciliation.md` para o contrato e a matriz
+de evidências.
 
 O adapter de GP Inventory foi validado exclusivamente em laboratório local
 com fixtures fictícias. Sua compatibilidade depende dos internals observados
@@ -137,7 +147,7 @@ composer test
 
 ## Idempotência de Publicação
 
-O schema `0.6.1` reserva a `Idempotency-Key` antes de qualquer materialização e
+O schema `0.8.0` reserva a `Idempotency-Key` antes de qualquer materialização e
 mantém o mapping persistente de Resources compartilhados.
 O ciclo, detalhes de migration, respostas e reconciliação estão em
 `docs/fase-12b-idempotencia.md`. Uma retry legítima usa novo timestamp e nonce,

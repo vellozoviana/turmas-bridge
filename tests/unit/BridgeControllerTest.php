@@ -21,13 +21,14 @@ final class BridgeControllerTest extends TestCase {
 	public function test_routes_are_authenticated_and_activation_is_post_while_status_is_get(): void {
 		Bridge_Controller::register_routes();
 
-		self::assertCount(6, $GLOBALS['turmas_bridge_test_routes']);
+		self::assertCount(7, $GLOBALS['turmas_bridge_test_routes']);
 		foreach ($GLOBALS['turmas_bridge_test_routes'] as $index => $route) {
-			self::assertSame(in_array($index, array(2, 4), true) ? 'POST' : 'GET', $route['arguments']['methods']);
+			self::assertSame(in_array($index, array(2, 4, 6), true) ? 'POST' : 'GET', $route['arguments']['methods']);
 			self::assertSame(array(Bridge_Controller::class, 'authenticate'), $route['arguments']['permission_callback']);
 		}
 		self::assertStringContainsString('/activation', $GLOBALS['turmas_bridge_test_routes'][4]['route']);
 		self::assertStringContainsString('/operacoes/', $GLOBALS['turmas_bridge_test_routes'][5]['route']);
+		self::assertStringContainsString('/reconciliation', $GLOBALS['turmas_bridge_test_routes'][6]['route']);
 	}
 
 	public function test_publication_status_rejects_invalid_key_without_external_access(): void {
@@ -56,6 +57,27 @@ final class BridgeControllerTest extends TestCase {
 	public function test_activation_requires_idempotency_header_before_service_boundary(): void {
 		$request = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes/2099:E2F/activation'); $request->set_param('publication_key', '2099:E2F'); $request->set_body((string) json_encode(array('schema_version' => '1', 'operation_key' => 'operation-a', 'publication_key' => '2099:E2F', 'expected_form_id' => 10, 'snapshot_fingerprint' => str_repeat('a', 64))));
 		$result = Bridge_Controller::activation($request);
+
+		self::assertInstanceOf(\WP_Error::class, $result); self::assertSame('turmas_bridge_idempotency_key_required', $result->get_error_code()); self::assertSame(400, $result->get_error_data()['status']);
+	}
+
+	public function test_reconciliation_rejects_header_and_body_identity_divergence(): void {
+		$request = new \WP_REST_Request('POST', '/turmas-bridge/v1/operacoes/operation-a/reconciliation');
+		$request->set_param('operation_key', 'operation-a');
+		$request->set_header('Idempotency-Key', 'reconcile-a');
+		$request->set_body((string) json_encode(array('schema_version' => '1', 'reconciliation_key' => 'reconcile-b', 'activation_operation_key' => 'operation-a', 'publication_key' => '2099:E2F', 'expected_form_id' => 10, 'snapshot_fingerprint' => str_repeat('a', 64))));
+
+		$result = Bridge_Controller::reconciliation($request);
+
+		self::assertInstanceOf(\WP_Error::class, $result); self::assertSame('turmas_bridge_reconciliation_identity_conflict', $result->get_error_code()); self::assertSame(409, $result->get_error_data()['status']);
+	}
+
+	public function test_reconciliation_requires_idempotency_header(): void {
+		$request = new \WP_REST_Request('POST', '/turmas-bridge/v1/operacoes/operation-a/reconciliation');
+		$request->set_param('operation_key', 'operation-a');
+		$request->set_body((string) json_encode(array('schema_version' => '1', 'reconciliation_key' => 'reconcile-a', 'activation_operation_key' => 'operation-a', 'publication_key' => '2099:E2F', 'expected_form_id' => 10, 'snapshot_fingerprint' => str_repeat('a', 64))));
+
+		$result = Bridge_Controller::reconciliation($request);
 
 		self::assertInstanceOf(\WP_Error::class, $result); self::assertSame('turmas_bridge_idempotency_key_required', $result->get_error_code()); self::assertSame(400, $result->get_error_data()['status']);
 	}

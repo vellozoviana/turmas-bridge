@@ -30,6 +30,9 @@ final class SchemaTest extends TestCase {
 		self::assertStringContainsString('UNIQUE KEY operation_key (operation_key)', $this->activation_statement());
 		self::assertStringContainsString('snapshot_fingerprint char(64) NOT NULL', $this->activation_statement());
 		self::assertStringContainsString('KEY publication_key (publication_key)', $this->activation_statement());
+		self::assertStringContainsString('UNIQUE KEY reconciliation_key (reconciliation_key)', $this->reconciliation_statement());
+		self::assertStringContainsString('completed_at datetime DEFAULT NULL', $this->reconciliation_statement());
+		self::assertStringContainsString('KEY activation_operation_key (activation_operation_key)', $this->reconciliation_statement());
 		self::assertSame(Schema::VERSION, $GLOBALS['turmas_bridge_test_options'][Schema::OPTION_NAME]);
 	}
 
@@ -39,7 +42,7 @@ final class SchemaTest extends TestCase {
 		$state_updates = array_filter($GLOBALS['turmas_bridge_test_database_queries'], static fn (string $query): bool => str_contains($query, "SET state = 'SUCCEEDED'"));
 
 		self::assertCount(2, $state_updates);
-		self::assertCount(8, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertCount(10, $GLOBALS['turmas_bridge_test_dbdelta']);
 	}
 
 	private function idempotency_statement(): string {
@@ -53,5 +56,9 @@ final class SchemaTest extends TestCase {
 	private function activation_statement(): string {
 		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_activation_operations')) return $statement;
 		self::fail('Ledger de ativação não encontrado.');
+	}
+	private function reconciliation_statement(): string {
+		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_reconciliation_attempts')) return $statement;
+		self::fail('Schema de reconciliação não encontrado.');
 	}
 }

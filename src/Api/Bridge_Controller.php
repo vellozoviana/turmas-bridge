@@ -12,6 +12,8 @@ use TurmasBridge\Activation\Remote_Activation_Command_Service;
 use TurmasBridge\Gravity\Template_Manifest;
 use TurmasBridge\Publications\Publication_Controller;
 use TurmasBridge\Publications\Publication_Status_Reader;
+use TurmasBridge\Reconciliation\Reconciliation_Attempt_Repository;
+use TurmasBridge\Reconciliation\Reconciliation_Service;
 
 final class Bridge_Controller {
 	public static function register_routes(): void {
@@ -44,6 +46,11 @@ final class Bridge_Controller {
 			'methods' => 'GET',
 			'permission_callback' => array(self::class, 'authenticate'),
 			'callback' => array(self::class, 'activation_status'),
+		));
+		register_rest_route('turmas-bridge/v1', '/operacoes/(?P<operation_key>[A-Za-z0-9:_-]{1,128})/reconciliation', array(
+			'methods' => 'POST',
+			'permission_callback' => array(self::class, 'authenticate'),
+			'callback' => array(self::class, 'reconciliation'),
 		));
 	}
 
@@ -109,6 +116,23 @@ final class Bridge_Controller {
 	/** @return \WP_REST_Response|\WP_Error */
 	public static function activation_status(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
 		$result = self::activation_service()->status((string) $request->get_param('operation_key'));
+		$data = $result->to_array();
+		$reconciliation = (new Reconciliation_Attempt_Repository())->find_latest_for_activation((string) $request->get_param('operation_key'));
+		$data['reconciliation'] = is_array($reconciliation) ? array('reconciliation_key' => (string) ($reconciliation['reconciliation_key'] ?? ''), 'state' => (string) ($reconciliation['state'] ?? ''), 'result_code' => $reconciliation['result_code'] ?? null, 'evidence' => self::decode_evidence($reconciliation['evidence_json'] ?? null)) : null;
+		return new \WP_REST_Response($data, $result->http_status());
+	}
+
+	/** @return \WP_REST_Response|\WP_Error */
+	public static function reconciliation(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
+		$body = (string) $request->get_body();
+		try { $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR); } catch (\JsonException) { return new \WP_Error('turmas_bridge_invalid_json', 'O corpo JSON é inválido.', array('status' => 400)); }
+		if (! is_array($decoded)) return new \WP_Error('turmas_bridge_invalid_reconciliation_request', 'O corpo da reconciliação deve ser um objeto JSON.', array('status' => 400));
+		$path_key = (string) $request->get_param('operation_key');
+		$header_key = trim((string) $request->get_header('idempotency-key'));
+		$body_key = (string) ($decoded['reconciliation_key'] ?? '');
+		if (! preg_match('/^[A-Za-z0-9:_-]{1,128}$/', $header_key)) return new \WP_Error('turmas_bridge_idempotency_key_required', 'A chave de idempotência é obrigatória.', array('status' => 400));
+		if ($body_key !== $header_key || (string) ($decoded['activation_operation_key'] ?? '') !== $path_key) return new \WP_Error('turmas_bridge_reconciliation_identity_conflict', 'A identidade do caminho, corpo e header diverge.', array('status' => 409));
+		$result = self::reconciliation_service()->execute($decoded);
 		return new \WP_REST_Response($result->to_array(), $result->http_status());
 	}
 
@@ -116,4 +140,11 @@ final class Bridge_Controller {
 		$repository = new Activation_Operation_Repository();
 		return new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($repository), new Form_Activation_Service());
 	}
+
+	private static function reconciliation_service(): Reconciliation_Service {
+		return new Reconciliation_Service(new Activation_Operation_Repository(), new Reconciliation_Attempt_Repository(), new Publication_Status_Reader());
+	}
+
+	/** @return array<string,mixed> */
+	private static function decode_evidence(mixed $json): array { if (! is_string($json) || $json === '') return array(); $decoded = json_decode($json, true); return is_array($decoded) ? $decoded : array(); }
 }

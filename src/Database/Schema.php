@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TurmasBridge\Database;
 
 final class Schema {
-	public const VERSION = '0.7.0';
+	public const VERSION = '0.8.0';
 	public const OPTION_NAME = 'turmas_bridge_schema_version';
 
 	public static function install(): void {
@@ -92,6 +92,27 @@ final class Schema {
 			KEY publication_key (publication_key),
 			KEY state (state),
 			KEY gravity_form_id (gravity_form_id),
+			KEY updated_at (updated_at)
+		) {$charset_collate};");
+		$reconciliation_attempts = $wpdb->prefix . 'turmas_bridge_reconciliation_attempts';
+		dbDelta("CREATE TABLE {$reconciliation_attempts} (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			reconciliation_key varchar(128) NOT NULL,
+			activation_operation_key varchar(128) NOT NULL,
+			publication_key varchar(80) NOT NULL,
+			gravity_form_id bigint(20) unsigned NOT NULL,
+			snapshot_fingerprint char(64) NOT NULL,
+			state varchar(32) NOT NULL DEFAULT 'PENDING',
+			result_code varchar(100) DEFAULT NULL,
+			evidence_json longtext DEFAULT NULL,
+			processing_started_at datetime DEFAULT NULL,
+			completed_at datetime DEFAULT NULL,
+			created_at datetime NOT NULL,
+			updated_at datetime NOT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY reconciliation_key (reconciliation_key),
+			KEY activation_operation_key (activation_operation_key),
+			KEY state (state),
 			KEY updated_at (updated_at)
 		) {$charset_collate};");
 		update_option(self::OPTION_NAME, self::VERSION, false);
