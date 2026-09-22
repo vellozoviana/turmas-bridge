@@ -102,9 +102,9 @@ final class FormActivationServiceTest extends TestCase {
 		self::assertInstanceOf(\WP_Error::class, $result); self::assertTrue((bool) ($result->get_error_data()['mutation_attempted'] ?? false)); self::assertSame('turmas_bridge_form_activation_unknown', $result->get_error_code());
 	}
 
-	public function test_no_runtime_reachability_is_registered(): void {
+	public function test_b2_primitive_is_not_wired_directly_to_plugin_bootstrap(): void {
 		$plugin = (string) file_get_contents(__DIR__ . '/../../src/Plugin.php'); $controller = (string) file_get_contents(__DIR__ . '/../../src/Api/Bridge_Controller.php');
-		self::assertStringNotContainsString('Form_Activation_Service', $plugin); self::assertStringNotContainsString('Activation_Service', $controller); self::assertStringNotContainsString('activation', strtolower($controller));
+		self::assertStringNotContainsString('Form_Activation_Service', $plugin); self::assertStringContainsString('Remote_Activation_Command_Service', $controller);
 	}
 
 	public function test_existing_materialization_and_status_contracts_are_not_wired_to_activation(): void {

@@ -5,6 +5,10 @@ declare(strict_types=1);
 namespace TurmasBridge\Api;
 
 use TurmasBridge\Auth\Request_Authenticator;
+use TurmasBridge\Activation\Activation_Operation_Orchestrator;
+use TurmasBridge\Activation\Activation_Operation_Repository;
+use TurmasBridge\Activation\Form_Activation_Service;
+use TurmasBridge\Activation\Remote_Activation_Command_Service;
 use TurmasBridge\Gravity\Template_Manifest;
 use TurmasBridge\Publications\Publication_Controller;
 use TurmasBridge\Publications\Publication_Status_Reader;
@@ -30,6 +34,16 @@ final class Bridge_Controller {
 			'methods' => 'GET',
 			'permission_callback' => array(self::class, 'authenticate'),
 			'callback' => array(self::class, 'publication_status'),
+		));
+		register_rest_route('turmas-bridge/v1', '/publicacoes/(?P<publication_key>[0-9]{4}:[A-Z0-9_-]{1,50})/activation', array(
+			'methods' => 'POST',
+			'permission_callback' => array(self::class, 'authenticate'),
+			'callback' => array(self::class, 'activation'),
+		));
+		register_rest_route('turmas-bridge/v1', '/operacoes/(?P<operation_key>[A-Za-z0-9:_-]{1,128})', array(
+			'methods' => 'GET',
+			'permission_callback' => array(self::class, 'authenticate'),
+			'callback' => array(self::class, 'activation_status'),
 		));
 	}
 
@@ -78,5 +92,28 @@ final class Bridge_Controller {
 		$key = (string) $request->get_param('publication_key');
 		$result = (new Publication_Status_Reader())->read($key);
 		return is_wp_error($result) ? $result : new \WP_REST_Response(array('ok' => true, 'publication' => $result, 'request_id' => wp_generate_uuid4()), 200);
+	}
+
+	/** @return \WP_REST_Response|\WP_Error */
+	public static function activation(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
+		$body = (string) $request->get_body();
+		try { $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR); } catch (\JsonException) { return new \WP_Error('turmas_bridge_invalid_json', 'O corpo JSON é inválido.', array('status' => 400)); }
+		if (! is_array($decoded)) return new \WP_Error('turmas_bridge_invalid_activation_request', 'O corpo da ativação deve ser um objeto JSON.', array('status' => 400));
+		$path_key = (string) $request->get_param('publication_key'); $header_key = trim((string) $request->get_header('idempotency-key'));
+		if (! preg_match('/^[A-Za-z0-9:_-]{1,128}$/', $header_key)) return new \WP_Error('turmas_bridge_idempotency_key_required', 'A chave de idempotência é obrigatória.', array('status' => 400));
+		if ((string) ($decoded['publication_key'] ?? '') !== $path_key || (string) ($decoded['operation_key'] ?? '') !== $header_key) return new \WP_Error('turmas_bridge_activation_identity_conflict', 'A identidade do caminho, corpo e header diverge.', array('status' => 409));
+		$result = self::activation_service()->execute($decoded);
+		return new \WP_REST_Response($result->to_array(), $result->http_status());
+	}
+
+	/** @return \WP_REST_Response|\WP_Error */
+	public static function activation_status(\WP_REST_Request $request): \WP_REST_Response|\WP_Error {
+		$result = self::activation_service()->status((string) $request->get_param('operation_key'));
+		return new \WP_REST_Response($result->to_array(), $result->http_status());
+	}
+
+	private static function activation_service(): Remote_Activation_Command_Service {
+		$repository = new Activation_Operation_Repository();
+		return new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($repository), new Form_Activation_Service());
 	}
 }

@@ -9,8 +9,8 @@ use TurmasBridge\Materialization\Materialization_Store;
 use TurmasBridge\Publications\Publication_Status_Provider;
 use TurmasBridge\Publications\Publication_Status_Reader;
 
-/** Internal-only activation boundary. It is deliberately not registered in any runtime entry point. */
-final class Form_Activation_Service {
+/** B2 activation primitive; B3B1 is the only command boundary that may compose it. */
+final class Form_Activation_Service implements Activation_Command {
 	private Publication_Status_Provider $status;
 	private Form_Activation_Gateway $gateway;
 	private Materialization_Store $lock;
