@@ -11,6 +11,7 @@ use TurmasBridge\Activation\Activation_Operation_Reservation;
 use TurmasBridge\Activation\Activation_Operation_State;
 use TurmasBridge\Activation\Activation_Operation_Store;
 use TurmasBridge\Activation\Activation_Operation_Transition;
+use TurmasBridge\Activation\Activation_Mutation_Evidence;
 use TurmasBridge\Activation\Activation_Result;
 use TurmasBridge\Activation\Remote_Activation_Command_Service;
 
@@ -81,9 +82,10 @@ final class RemoteActivationCommandServiceTest extends TestCase {
 	}
 
 	public function test_success_persistence_failure_returns_reconciliation_without_claiming_success(): void {
-		$store = new Remote_Activation_Fake_Store(); $store->fail_success_transition = true; $b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::ACTIVATED, 'FORM_ACTIVATED', 'ok')); $service = $this->service($store, $b2); $result = $service->execute($this->command()); $replay = $service->execute($this->command());
+		$mutation = Activation_Mutation_Evidence::from_verified_gateway(new \TurmasBridge\Activation\Form_Activation_Outcome('INACTIVE', true, 'ACTIVE', true), '2099:E2F', 10, array('publication_key' => '2099:E2F', 'form_id' => 10, 'form_state' => 'active'));
+		$store = new Remote_Activation_Fake_Store(); $store->fail_success_transition = true; $b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::ACTIVATED, 'FORM_ACTIVATED', 'ok', array(), $mutation)); $service = $this->service($store, $b2); $result = $service->execute($this->command()); $replay = $service->execute($this->command());
 
-		self::assertSame(409, $result->http_status()); self::assertSame('reconciliation_required', $result->code()); self::assertSame(Activation_Operation_State::RECONCILIATION_REQUIRED, $store->record['state']); self::assertSame(1, $b2->calls); self::assertSame(409, $replay->http_status()); self::assertSame(1, $b2->calls);
+		self::assertSame(409, $result->http_status()); self::assertSame('reconciliation_required', $result->code()); self::assertSame(Activation_Operation_State::RECONCILIATION_REQUIRED, $store->record['state']); self::assertSame(1, $b2->calls); self::assertSame(409, $replay->http_status()); self::assertSame(1, $b2->calls); self::assertTrue(Activation_Mutation_Evidence::is_confirmed_persisted($store->record['evidence_json']['activation_mutation'] ?? null, 10));
 	}
 
 	public function test_invalid_request_does_not_reserve_or_call_b2(): void {

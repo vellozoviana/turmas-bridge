@@ -59,19 +59,18 @@ final class Remote_Activation_Command_Service {
 		$status = $outcome->status(); $evidence = $this->safe_evidence($outcome);
 		if ($status === Activation_Result::ACTIVATED) {
 			$transition = $this->operations->succeed($id, $evidence);
-			return $transition->result() === Activation_Operation_Transition::UPDATED ? $this->success($operation_key, $publication_key, $form_id, false) : $this->reconcile($id, 'activation_success_persistence_failed');
+			return $transition->result() === Activation_Operation_Transition::UPDATED ? $this->success($operation_key, $publication_key, $form_id, false) : $this->reconcile($id, 'activation_success_persistence_failed', $operation_key, $publication_key, $form_id, $evidence);
 		}
 		if ($this->safe_failure($outcome)) {
 			$transition = $this->operations->fail_before_mutation($id, $outcome->code());
-			return $transition->result() === Activation_Operation_Transition::UPDATED ? new Remote_Activation_Result(422, $outcome->code(), Activation_Operation_State::FAILED, array('operation_key' => $operation_key, 'publication_key' => $publication_key, 'gravity_form_id' => $form_id, 'idempotent_replay' => false)) : $this->reconcile($id, 'activation_failure_persistence_failed');
+			return $transition->result() === Activation_Operation_Transition::UPDATED ? new Remote_Activation_Result(422, $outcome->code(), Activation_Operation_State::FAILED, array('operation_key' => $operation_key, 'publication_key' => $publication_key, 'gravity_form_id' => $form_id, 'idempotent_replay' => false)) : $this->reconcile($id, 'activation_failure_persistence_failed', $operation_key, $publication_key, $form_id, $evidence);
 		}
-		return $this->reconcile($id, $outcome->code(), $operation_key, $publication_key, $form_id);
+		return $this->reconcile($id, $outcome->code(), $operation_key, $publication_key, $form_id, $evidence);
 	}
 	private function safe_failure(Activation_Result $outcome): bool {
 		if ($outcome->status() === Activation_Result::BLOCKED) return true;
 		if ($outcome->status() !== Activation_Result::FAILED) return false;
-		$gateway = (array) ($outcome->evidence()['gateway'] ?? array());
-		return array_key_exists('mutation_attempted', $gateway) && $gateway['mutation_attempted'] === false;
+		return $outcome->mutation_evidence()->state() === Activation_Mutation_Evidence::NO_MUTATION_EVIDENCE;
 	}
 	/** @param array<string,mixed> $record */
 	private function existing(array $record): ?Remote_Activation_Result {
@@ -90,7 +89,7 @@ final class Remote_Activation_Command_Service {
 	private function success(string $operation_key, string $publication_key, int $form_id, bool $replay): Remote_Activation_Result { return new Remote_Activation_Result($replay ? 200 : 201, $replay ? 'activation_replay' : 'activation_succeeded', Activation_Operation_State::SUCCEEDED, array('operation_key' => $operation_key, 'publication_key' => $publication_key, 'gravity_form_id' => $form_id, 'idempotent_replay' => $replay)); }
 	private function conflict(string $code, string $state): Remote_Activation_Result { return new Remote_Activation_Result(409, $code, $state); }
 	private function temporary(string $code, string $state): Remote_Activation_Result { return new Remote_Activation_Result(503, $code, $state, array('reconciliation_required' => $state === Activation_Operation_State::IN_PROGRESS)); }
-	private function reconcile(int $id, string $code, string $operation_key = '', string $publication_key = '', int $form_id = 0): Remote_Activation_Result { $transition = $this->operations->require_reconciliation($id, $code, array('reason_code' => $code, 'verified_at' => gmdate('c'))); if ($transition->result() !== Activation_Operation_Transition::UPDATED) return new Remote_Activation_Result(503, 'activation_reconciliation_persistence_failed', Activation_Operation_State::RECONCILIATION_REQUIRED, array('reconciliation_required' => true)); return new Remote_Activation_Result(409, 'reconciliation_required', Activation_Operation_State::RECONCILIATION_REQUIRED, array('operation_key' => $operation_key, 'publication_key' => $publication_key, 'gravity_form_id' => $form_id, 'reconciliation_required' => true)); }
+	private function reconcile(int $id, string $code, string $operation_key = '', string $publication_key = '', int $form_id = 0, array $evidence = array()): Remote_Activation_Result { $evidence['reason_code'] = $code; $evidence['verified_at'] = gmdate('c'); $transition = $this->operations->require_reconciliation($id, $code, $evidence); if ($transition->result() !== Activation_Operation_Transition::UPDATED) return new Remote_Activation_Result(503, 'activation_reconciliation_persistence_failed', Activation_Operation_State::RECONCILIATION_REQUIRED, array('reconciliation_required' => true)); return new Remote_Activation_Result(409, 'reconciliation_required', Activation_Operation_State::RECONCILIATION_REQUIRED, array('operation_key' => $operation_key, 'publication_key' => $publication_key, 'gravity_form_id' => $form_id, 'reconciliation_required' => true)); }
 	/** @return array<string,mixed> */
-	private function safe_evidence(Activation_Result $outcome): array { return array('observed_form_state' => $outcome->status() === Activation_Result::ACTIVATED ? 'ACTIVE' : 'UNKNOWN', 'observed_inventory_health' => $outcome->status() === Activation_Result::ACTIVATED ? 'READY' : 'UNKNOWN', 'reason_code' => $outcome->code(), 'verified_at' => gmdate('c')); }
+	private function safe_evidence(Activation_Result $outcome): array { return array('observed_form_state' => $outcome->status() === Activation_Result::ACTIVATED ? 'ACTIVE' : 'UNKNOWN', 'observed_inventory_health' => $outcome->status() === Activation_Result::ACTIVATED ? 'READY' : 'UNKNOWN', 'reason_code' => $outcome->code(), 'verified_at' => gmdate('c'), 'activation_mutation' => $outcome->mutation_evidence()->to_array()); }
 }

@@ -74,7 +74,7 @@ final class FormActivationServiceTest extends TestCase {
 
 	public function test_post_activation_inventory_drift_requires_reconciliation(): void {
 		$world = new ActivationWorld(); $gateway = new ActivationFakeGateway($world); $world->drift_after_activation = true; $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('5', 64));
-		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code()); self::assertTrue($world->active);
+		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code()); self::assertTrue($world->active); self::assertSame('MUTATION_CONFIRMED', $result->mutation_evidence()->state()); self::assertSame(10, $result->mutation_evidence()->to_array()['form_id']);
 	}
 
 	public function test_post_activation_wrong_form_identity_requires_reconciliation(): void {
@@ -104,7 +104,7 @@ final class FormActivationServiceTest extends TestCase {
 
 	public function test_post_activation_reader_failure_requires_reconciliation(): void {
 		$world = new ActivationWorld(); $world->post_status_error = true; $gateway = new ActivationFakeGateway($world); $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('c', 64));
-		self::assertSame(Activation_Result::UNKNOWN, $result->status()); self::assertSame('POST_ACTIVATION_STATUS_UNAVAILABLE', $result->code());
+		self::assertSame(Activation_Result::UNKNOWN, $result->status()); self::assertSame('POST_ACTIVATION_STATUS_UNAVAILABLE', $result->code()); self::assertSame('OUTCOME_UNCERTAIN', $result->mutation_evidence()->state());
 	}
 
 	public function test_lock_unavailable_prevents_activation(): void {

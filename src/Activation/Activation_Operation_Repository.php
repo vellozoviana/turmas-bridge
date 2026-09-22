@@ -72,11 +72,13 @@ final class Activation_Operation_Repository implements Activation_Operation_Stor
 	private function table(): string { return $this->wpdb->prefix . 'turmas_bridge_activation_operations'; }
 	private function encode_evidence(array $evidence): string|false|null {
 		if ($evidence === array()) return null;
-		$allowed = array('observed_form_state', 'observed_inventory_health', 'reason_code', 'verified_at');
+		$allowed = array('observed_form_state', 'observed_inventory_health', 'reason_code', 'verified_at', 'activation_mutation');
 		foreach ($evidence as $key => $value) {
-			if (! is_string($key) || ! in_array($key, $allowed, true) || is_array($value) || is_object($value)) return false;
+			if (! is_string($key) || ! in_array($key, $allowed, true)) return false;
+			if ($key === 'activation_mutation') { if (! Activation_Mutation_Evidence::is_valid_persisted($value)) return false; continue; }
+			if (is_array($value) || is_object($value) || ! is_scalar($value)) return false;
 		}
 		$json = wp_json_encode($evidence, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-		return is_string($json) ? $json : false;
+		return is_string($json) && strlen($json) <= 2048 ? $json : false;
 	}
 }

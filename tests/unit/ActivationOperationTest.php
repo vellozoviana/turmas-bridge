@@ -87,6 +87,33 @@ final class ActivationOperationTest extends TestCase {
 		self::assertSame(Activation_Operation_State::IN_PROGRESS, $db->records[$id]['state']);
 	}
 
+	public function test_evidence_contract_accepts_only_bounded_canonical_activation_mutation(): void {
+		$db = new Activation_Operation_Test_Database(); $repository = new Activation_Operation_Repository($db); $record = $repository->reserve('lab-causal-evidence-v1', '2099:LAB', 901, str_repeat('e', 64))->record(); $id = (int) $record['id'];
+		$repository->transition($id, Activation_Operation_State::PENDING, Activation_Operation_State::IN_PROGRESS);
+		$strong = array('version' => 1, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 901, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active');
+		$accepted = $repository->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', array('reason_code' => 'POST_ACTIVATION_DRIFT', 'activation_mutation' => $strong));
+		self::assertSame(Activation_Operation_Transition::UPDATED, $accepted->result()); self::assertSame($strong, json_decode((string) $db->records[$id]['evidence_json'], true)['activation_mutation']);
+	}
+
+	public function test_evidence_contract_persists_attempt_as_weak_but_rejects_malformed_canonical_data(): void {
+		$db = new Activation_Operation_Test_Database(); $repository = new Activation_Operation_Repository($db); $record = $repository->reserve('lab-causal-evidence-v2', '2099:LAB', 901, str_repeat('e', 64))->record(); $id = (int) $record['id'];
+		$repository->transition($id, Activation_Operation_State::PENDING, Activation_Operation_State::IN_PROGRESS);
+		$weak = array('version' => 1, 'state' => 'MUTATION_ATTEMPTED', 'form_id' => 901, 'source' => 'b2_gateway_error', 'observed_form_state' => 'unknown');
+		$accepted_weak = $repository->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', array('activation_mutation' => $weak));
+		self::assertSame(Activation_Operation_Transition::UPDATED, $accepted_weak->result()); self::assertSame($weak, json_decode((string) $db->records[$id]['evidence_json'], true)['activation_mutation']);
+		$db2 = new Activation_Operation_Test_Database(); $repository2 = new Activation_Operation_Repository($db2); $record2 = $repository2->reserve('lab-causal-evidence-v2b', '2099:LAB', 901, str_repeat('e', 64))->record(); $id2 = (int) $record2['id']; $repository2->transition($id2, Activation_Operation_State::PENDING, Activation_Operation_State::IN_PROGRESS);
+		$bad = array('version' => 1, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 901, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active', 'client_claim' => true);
+		$also_rejected = $repository2->transition($id2, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', array('activation_mutation' => $bad));
+		self::assertSame(Activation_Operation_Transition::ERROR, $also_rejected->result()); self::assertSame(Activation_Operation_State::IN_PROGRESS, $db2->records[$id2]['state']);
+	}
+
+	public function test_evidence_contract_rejects_oversized_payload_before_ledger_transition(): void {
+		$db = new Activation_Operation_Test_Database(); $repository = new Activation_Operation_Repository($db); $record = $repository->reserve('lab-causal-evidence-size', '2099:LAB', 901, str_repeat('e', 64))->record(); $id = (int) $record['id'];
+		$repository->transition($id, Activation_Operation_State::PENDING, Activation_Operation_State::IN_PROGRESS);
+		$result = $repository->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', array('reason_code' => str_repeat('x', 2100)));
+		self::assertSame(Activation_Operation_Transition::ERROR, $result->result()); self::assertSame(Activation_Operation_State::IN_PROGRESS, $db->records[$id]['state']);
+	}
+
 	public function test_orchestrator_exposes_only_ledger_transitions(): void {
 		$store = new Activation_Operation_Fake_Store(); $orchestrator = new Activation_Operation_Orchestrator($store);
 		$orchestrator->reserve('lab-b3a-ledger-v6', '2099:LAB', 901, str_repeat('f', 64));

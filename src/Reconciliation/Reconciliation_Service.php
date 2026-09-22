@@ -7,6 +7,7 @@ namespace TurmasBridge\Reconciliation;
 use TurmasBridge\Activation\Activation_Operation_State;
 use TurmasBridge\Activation\Activation_Operation_Store;
 use TurmasBridge\Activation\Activation_Operation_Transition;
+use TurmasBridge\Activation\Activation_Mutation_Evidence;
 use TurmasBridge\Publications\Post_Activation_Status_Provider;
 
 /**
@@ -127,8 +128,9 @@ final class Reconciliation_Service {
 	/** @param array<string,mixed> $operation */
 	private function historical_causality(array $operation): bool {
 		$evidence = $this->decode_evidence($operation['evidence_json'] ?? null); if ($evidence === array()) return false;
-		if (($evidence['mutation_attempted'] ?? false) === true || ($evidence['activation_mutation_confirmed'] ?? false) === true) return true;
-		$gateway = $evidence['gateway'] ?? null; return is_array($gateway) && (($gateway['mutation_attempted'] ?? false) === true);
+		if (Activation_Mutation_Evidence::is_confirmed_persisted($evidence['activation_mutation'] ?? null, (int) ($operation['gravity_form_id'] ?? 0))) return true;
+		// Legacy attempt flags are deliberately weak: they record invocation, not confirmation.
+		return false;
 	}
 
 	/** @return array<string,mixed> */

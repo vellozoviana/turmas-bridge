@@ -35,6 +35,29 @@ final class ReconciliationServiceTest extends TestCase {
 		self::assertSame(201, $result->http_status()); self::assertSame('INSUFFICIENT_CAUSAL_EVIDENCE', $result->code()); self::assertSame(Reconciliation_Attempt_State::INCONCLUSIVE, $result->state());
 	}
 
+	public function test_legacy_attempt_only_and_claimed_confirmation_fields_are_not_trusted(): void {
+		foreach (array(array('mutation_attempted' => true), array('gateway' => array('mutation_attempted' => true)), array('activation_mutation_confirmed' => true), array('mutation_attempted' => 'true'), array('mutation_attempted' => 1)) as $legacy) {
+			$operation = $this->operation(false); $operation['evidence_json'] = json_encode($legacy);
+			$result = $this->service(new FakeReconciliationAttempts(), new FakePostActivationVerifier($this->healthy()), $operation)->execute($this->command('legacy-' . count($legacy) . '-' . md5((string) json_encode($legacy))));
+			self::assertSame(Reconciliation_Attempt_State::INCONCLUSIVE, $result->state()); self::assertSame('INSUFFICIENT_CAUSAL_EVIDENCE', $result->code());
+		}
+	}
+
+	public function test_canonical_confirmation_must_match_version_source_form_and_exact_types(): void {
+		$invalid = array(
+			array('version' => '1', 'state' => 'MUTATION_CONFIRMED', 'form_id' => 10, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active'),
+			array('version' => 1, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 11, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active'),
+			array('version' => 1, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 10, 'source' => 'client', 'observed_form_state' => 'active'),
+			array('version' => 1, 'state' => 'MUTATION_ATTEMPTED', 'form_id' => 10, 'source' => 'b2_gateway_error', 'observed_form_state' => 'unknown'),
+			array('version' => 2, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 10, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active'),
+		);
+		foreach ($invalid as $index => $canonical) {
+			$operation = $this->operation(false); $operation['evidence_json'] = json_encode(array('activation_mutation' => $canonical));
+			$result = $this->service(new FakeReconciliationAttempts(), new FakePostActivationVerifier($this->healthy()), $operation)->execute($this->command('invalid-canonical-' . $index));
+			self::assertSame(Reconciliation_Attempt_State::INCONCLUSIVE, $result->state()); self::assertSame('INSUFFICIENT_CAUSAL_EVIDENCE', $result->code());
+		}
+	}
+
 	public function test_structural_drift_is_inconclusive_even_with_causal_evidence(): void {
 		$fresh = $this->healthy(); $fresh['inventory']['resources'][0]['consumed'] = 6;
 		$result = $this->service(new FakeReconciliationAttempts(), new FakePostActivationVerifier($fresh), $this->operation(true))->execute($this->command('reconcile-3'));
@@ -114,7 +137,7 @@ final class ReconciliationServiceTest extends TestCase {
 	/** @param array<string,mixed> $operation */
 	private function service(FakeReconciliationAttempts $attempts, FakePostActivationVerifier $verifier, array $operation): Reconciliation_Service { return new Reconciliation_Service(new FakeActivationOperations($operation, $attempts), $attempts, $verifier); }
 	/** @return array<string,mixed> */
-	private function operation(bool $causal): array { return array('id' => 1, 'operation_key' => self::OPERATION, 'publication_key' => self::PUBLICATION, 'gravity_form_id' => 10, 'snapshot_fingerprint' => self::FINGERPRINT, 'state' => Activation_Operation_State::RECONCILIATION_REQUIRED, 'error_code' => 'POST_ACTIVATION_DRIFT', 'evidence_json' => json_encode($causal ? array('mutation_attempted' => true) : array('reason_code' => 'POST_ACTIVATION_DRIFT'))); }
+	private function operation(bool $causal): array { $strong = array('version' => 1, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 10, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active'); return array('id' => 1, 'operation_key' => self::OPERATION, 'publication_key' => self::PUBLICATION, 'gravity_form_id' => 10, 'snapshot_fingerprint' => self::FINGERPRINT, 'state' => Activation_Operation_State::RECONCILIATION_REQUIRED, 'error_code' => 'POST_ACTIVATION_DRIFT', 'evidence_json' => json_encode($causal ? array('activation_mutation' => $strong) : array('reason_code' => 'POST_ACTIVATION_DRIFT'))); }
 	/** @return array<string,mixed> */
 	private function command(string $key): array { return array('schema_version' => '1', 'reconciliation_key' => $key, 'activation_operation_key' => self::OPERATION, 'publication_key' => self::PUBLICATION, 'expected_form_id' => 10, 'snapshot_fingerprint' => self::FINGERPRINT); }
 	/** @return array<string,mixed> */

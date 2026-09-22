@@ -12,6 +12,7 @@ use TurmasBridge\Config\Secret_Provider;
 
 final class BridgeControllerTest extends TestCase {
 	protected function setUp(): void {
+		$GLOBALS['wpdb'] = new \wpdb();
 		$GLOBALS['turmas_bridge_test_options'] = array(Secret_Provider::OPTION_NAME => 'controller-test-secret');
 		$GLOBALS['turmas_bridge_test_transients'] = array();
 		$GLOBALS['turmas_bridge_test_ssl'] = true;
@@ -59,6 +60,21 @@ final class BridgeControllerTest extends TestCase {
 		$result = Bridge_Controller::activation($request);
 
 		self::assertInstanceOf(\WP_Error::class, $result); self::assertSame('turmas_bridge_idempotency_key_required', $result->get_error_code()); self::assertSame(400, $result->get_error_data()['status']);
+	}
+
+	public function test_activation_client_cannot_supply_causal_evidence(): void {
+		$forged_fields = array(
+			array('mutation_attempted' => true),
+			array('activation_mutation_confirmed' => true),
+			array('gateway' => array('mutation_attempted' => true)),
+			array('activation_mutation' => array('version' => 1, 'state' => 'MUTATION_CONFIRMED', 'form_id' => 10, 'source' => 'b2_gateway_success_and_post_read', 'observed_form_state' => 'active')),
+		);
+		foreach ($forged_fields as $index => $forged) {
+			$request = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes/2099:E2F/activation'); $request->set_param('publication_key', '2099:E2F'); $request->set_header('Idempotency-Key', 'operation-forgery-' . $index);
+			$request->set_body((string) json_encode(array_merge(array('schema_version' => '1', 'operation_key' => 'operation-forgery-' . $index, 'publication_key' => '2099:E2F', 'expected_form_id' => 10, 'snapshot_fingerprint' => str_repeat('a', 64)), $forged)));
+			$result = Bridge_Controller::activation($request);
+			self::assertInstanceOf(\WP_REST_Response::class, $result); self::assertSame(400, $result->get_status()); self::assertSame('invalid_activation_request', $result->get_data()['code']);
+		}
 	}
 
 	public function test_reconciliation_rejects_header_and_body_identity_divergence(): void {
