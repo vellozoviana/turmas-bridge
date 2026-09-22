@@ -81,7 +81,7 @@ final class Remote_Activation_Command_Service {
 	}
 	/** @param array<string,mixed> $record */
 	private function status_result(array $record, bool $replay): Remote_Activation_Result {
-		$state = (string) ($record['state'] ?? Activation_Operation_State::RECONCILIATION_REQUIRED); $base = array('operation_key' => (string) ($record['operation_key'] ?? ''), 'publication_key' => (string) ($record['publication_key'] ?? ''), 'gravity_form_id' => (int) ($record['gravity_form_id'] ?? 0), 'idempotent_replay' => $replay);
+		$state = (string) ($record['state'] ?? Activation_Operation_State::RECONCILIATION_REQUIRED); $base = array('operation_key' => (string) ($record['operation_key'] ?? ''), 'publication_key' => (string) ($record['publication_key'] ?? ''), 'gravity_form_id' => (int) ($record['gravity_form_id'] ?? 0), 'error_code' => $record['error_code'] ?? null, 'idempotent_replay' => $replay);
 		if ($state === Activation_Operation_State::SUCCEEDED) return new Remote_Activation_Result(200, 'activation_replay', $state, $base);
 		if ($state === Activation_Operation_State::FAILED) return new Remote_Activation_Result(409, (string) ($record['error_code'] ?? 'activation_failed'), $state, $base);
 		if ($state === Activation_Operation_State::RECONCILIATION_REQUIRED || $state === Activation_Operation_State::IN_PROGRESS) return new Remote_Activation_Result(409, 'reconciliation_required', $state, array_merge($base, array('reconciliation_required' => true)));

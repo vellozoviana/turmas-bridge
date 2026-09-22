@@ -118,6 +118,27 @@ final class RemoteActivationCommandServiceTest extends TestCase {
 		self::assertSame(200, $result->http_status()); self::assertSame($before, $store->record); self::assertSame(0, $b2->calls);
 	}
 
+	public function test_status_preserves_original_error_alongside_reconciliation_required_state(): void {
+		$store = new Remote_Activation_Fake_Store(); $store->seed(Activation_Operation_State::RECONCILIATION_REQUIRED); $store->record['error_code'] = 'POST_ACTIVATION_DRIFT';
+		$result = (new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), new Remote_Activation_Fake_B2(null)))->status('publish-2099:E2F-v1');
+
+		self::assertSame(409, $result->http_status()); self::assertSame(Activation_Operation_State::RECONCILIATION_REQUIRED, $result->to_array()['state']); self::assertSame('POST_ACTIVATION_DRIFT', $result->to_array()['error_code']);
+	}
+
+	public function test_status_preserves_failed_error_code(): void {
+		$store = new Remote_Activation_Fake_Store(); $store->seed(Activation_Operation_State::FAILED); $store->record['error_code'] = 'FORM_NOT_FOUND';
+		$result = (new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), new Remote_Activation_Fake_B2(null)))->status('publish-2099:E2F-v1');
+
+		self::assertSame('FORM_NOT_FOUND', $result->to_array()['error_code']); self::assertSame(Activation_Operation_State::FAILED, $result->to_array()['state']);
+	}
+
+	public function test_status_exposes_null_error_for_succeeded_operation(): void {
+		$store = new Remote_Activation_Fake_Store(); $store->seed(Activation_Operation_State::SUCCEEDED);
+		$result = (new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), new Remote_Activation_Fake_B2(null)))->status('publish-2099:E2F-v1');
+
+		self::assertArrayHasKey('error_code', $result->to_array()); self::assertNull($result->to_array()['error_code']);
+	}
+
 	/** @param array<string,mixed>|null $outcome */
 	private function service(Remote_Activation_Fake_Store $store, Remote_Activation_Fake_B2 $b2): Remote_Activation_Command_Service { return new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), $b2); }
 	/** @return array<string,mixed> */
