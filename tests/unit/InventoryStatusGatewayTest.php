@@ -31,6 +31,22 @@ final class InventoryStatusGatewayTest extends TestCase {
 		self::assertSame(0, $mapping->mutations);
 	}
 
+	public function test_post_activation_read_verifies_active_form_without_writing(): void {
+		$mapping = new Status_Mapping_Store(array(array('publication_key' => '2099:E2E', 'class_key' => '2099:E2E:01.01', 'resource_id' => 11, 'form_id' => 10, 'status' => 'HEALTHY')));
+		$operations = new Status_Operations();
+		$form = array(
+			'is_active' => true,
+			'fields' => array(
+				(object) array('id' => '1', 'type' => 'select', 'adminLabel' => 'turma_cre_01', 'choices' => array(array('value' => '2099:E2E:01.01', 'text' => 'E2E 01.01', 'inventory_limit' => 5))),
+				(object) array('id' => '2', 'type' => 'select', 'adminLabel' => 'turma_cre_11', 'choices' => array(array('value' => '2099:E2E:01.01', 'text' => 'E2E 01.01', 'inventory_limit' => 5))),
+			),
+		);
+		$result = (new WordPress_Inventory_Status_Gateway($mapping, $operations))->read_post_activation('2099:E2E', 10, $form);
+		self::assertSame('READY', $result['status']);
+		self::assertSame(1, $operations->inspections);
+		self::assertSame(0, $mapping->mutations);
+	}
+
 	public function test_detects_ambiguous_mapping_without_mutating_it(): void {
 		$mapping = new Status_Mapping_Store(array(
 			array('publication_key' => '2099:E2E', 'class_key' => '2099:E2E:01.01', 'resource_id' => 11, 'form_id' => 10, 'status' => 'HEALTHY'),
@@ -65,5 +81,6 @@ final class Status_Operations implements GP_Inventory_Operations {
 	public function resource_exists(int $resource_id): bool { return true; }
 	public function create_resource(Resource_Identity $identity): int { throw new Inventory_Integration_Exception('not_used', ''); }
 	public function inspect(Resource_Plan $plan, int $resource_id): array { $this->inspections++; return array('capacity' => 5, 'consumed' => 0, 'healthy' => true, 'reason' => null); }
+	public function inspect_post_activation(Resource_Plan $plan, int $resource_id): array { $this->inspections++; return array('capacity' => 5, 'consumed' => 0, 'healthy' => true, 'reason' => null); }
 	public function synchronize(Resource_Plan $plan, int $resource_id): array { throw new Inventory_Integration_Exception('not_used', ''); }
 }

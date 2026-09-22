@@ -12,6 +12,9 @@ interface GP_Inventory_Operations {
 	public function create_resource(Resource_Identity $identity): int;
 	/** @return array{capacity:int,consumed:int,healthy:bool,reason:?string} */
 	public function inspect(Resource_Plan $plan, int $resource_id): array;
+	/** Read-only structural/consumption inspection after a Form is active. */
+	/** @return array{capacity:int,consumed:int,healthy:bool,reason:?string} */
+	public function inspect_post_activation(Resource_Plan $plan, int $resource_id): array;
 	/** @return array{capacity:int,consumed:int,healthy:bool,reason:?string} */
 	public function synchronize(Resource_Plan $plan, int $resource_id): array;
 }

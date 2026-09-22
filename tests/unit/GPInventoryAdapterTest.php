@@ -141,6 +141,7 @@ class Fake_GP_Inventory_Operations implements GP_Inventory_Operations {
 	public function resource_exists(int $resource_id): bool { return $this->exists; }
 	public function create_resource(Resource_Identity $identity): int { if ($this->create_error !== null) throw $this->create_error; $this->creates++; return 91; }
 	public function inspect(Resource_Plan $plan, int $resource_id): array { if ($this->inspect_error !== null) throw $this->inspect_error; return array('capacity' => $this->capacity, 'consumed' => $this->consumed, 'healthy' => $this->healthy, 'reason' => $this->reason); }
+	public function inspect_post_activation(Resource_Plan $plan, int $resource_id): array { return $this->inspect($plan, $resource_id); }
 	public function synchronize(Resource_Plan $plan, int $resource_id): array { $this->synchronizes++; $this->field_writes++; $this->binding_writes++; $this->capacity_writes++; $this->capacity = $plan->capacity(); if ($this->consumed_after_synchronize !== null) $this->consumed = $this->consumed_after_synchronize; return array('capacity' => $this->capacity, 'consumed' => $this->consumed, 'healthy' => $this->sync_healthy, 'reason' => $this->sync_reason); }
 }
 

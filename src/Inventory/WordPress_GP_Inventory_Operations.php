@@ -55,9 +55,15 @@ final class WordPress_GP_Inventory_Operations implements GP_Inventory_Operations
 		return (int) $result;
 	}
 	public function inspect(Resource_Plan $plan, int $resource_id): array {
+		return $this->inspect_context($plan, $resource_id, false);
+	}
+	public function inspect_post_activation(Resource_Plan $plan, int $resource_id): array {
+		return $this->inspect_context($plan, $resource_id, true);
+	}
+	private function inspect_context(Resource_Plan $plan, int $resource_id, bool $allow_active_read): array {
 		$form = $this->form($plan);
 		if (! $this->resource_exists($resource_id)) return $this->state(0, 0, false, 'resource_missing');
-		if (! empty($form['is_active'])) return $this->state(0, 0, false, 'form_active');
+		if (! $allow_active_read && ! empty($form['is_active'])) return $this->state(0, 0, false, 'form_active');
 		$fields = $this->field_map($form);
 		$consumed = $this->fresh_consumed($form, $fields, $plan);
 		$expected_bindings = array();

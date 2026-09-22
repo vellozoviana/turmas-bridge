@@ -7,16 +7,19 @@ namespace TurmasBridge\Activation;
 use TurmasBridge\Materialization\Materialization_Repository;
 use TurmasBridge\Materialization\Materialization_Store;
 use TurmasBridge\Publications\Publication_Status_Provider;
+use TurmasBridge\Publications\Post_Activation_Status_Provider;
 use TurmasBridge\Publications\Publication_Status_Reader;
 
 /** B2 activation primitive; B3B1 is the only command boundary that may compose it. */
 final class Form_Activation_Service implements Activation_Command {
 	private Publication_Status_Provider $status;
+	private Publication_Status_Provider|Post_Activation_Status_Provider $post_status;
 	private Form_Activation_Gateway $gateway;
 	private Materialization_Store $lock;
 
 	public function __construct(?Publication_Status_Provider $status = null, ?Form_Activation_Gateway $gateway = null, ?Materialization_Store $lock = null) {
 		$this->status = $status ?? new Publication_Status_Reader();
+		$this->post_status = $this->status instanceof Post_Activation_Status_Provider ? $this->status : $this->status;
 		$this->gateway = $gateway ?? new WordPress_Form_Activation_Gateway();
 		$this->lock = $lock ?? new Materialization_Repository();
 	}
@@ -38,12 +41,12 @@ final class Form_Activation_Service implements Activation_Command {
 				$attempted = (bool) ($outcome->get_error_data()['mutation_attempted'] ?? false);
 				return $this->result($attempted ? Activation_Result::UNKNOWN : Activation_Result::FAILED, $attempted ? 'FORM_ACTIVATION_UNKNOWN' : 'FORM_ACTIVATION_FAILED', $outcome->get_error_message(), array('operation_key' => $operation_key, 'snapshot_fingerprint' => substr($snapshot_fingerprint, 0, 12), 'mutation_attempted' => $attempted));
 			}
-			$after = $this->status->read($publication_key);
+			$after = $this->post_status instanceof Post_Activation_Status_Provider ? $this->post_status->read_post_activation($publication_key) : $this->post_status->read($publication_key);
 			if (is_wp_error($after)) return $this->result(Activation_Result::UNKNOWN, 'POST_ACTIVATION_STATUS_UNAVAILABLE', 'Não foi possível confirmar o estado após a ativação.', array('operation_key' => $operation_key, 'mutation_attempted' => true));
 			if ((string) ($after['publication_key'] ?? '') !== $publication_key || (int) ($after['form_id'] ?? 0) !== $expected_form_id) return $this->result(Activation_Result::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', 'A Publicação ou o Form divergiram após a ativação.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
 			if (! $outcome->mutation_attempted() || $outcome->error_code() === 'FORM_ALREADY_ACTIVE') return $this->result(Activation_Result::RECONCILIATION_REQUIRED, 'FORM_ALREADY_ACTIVE_UNKNOWN', 'O adaptador encontrou o Form ativo sem mutação comprovada.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
 			if (! $outcome->verification_complete() || $outcome->after_state() !== 'ACTIVE' || $outcome->error_code() === 'FORM_ACTIVATION_NOT_CONFIRMED') return $this->result(Activation_Result::FAILED, 'FORM_ACTIVATION_NOT_CONFIRMED', 'A ativação não foi confirmada pelo adaptador.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
-			if ((string) ($after['effective_state'] ?? '') !== 'RECONCILIATION_REQUIRED' || (string) ($after['form_state'] ?? '') !== 'active') return $this->result(Activation_Result::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', 'O estado pós-ativação não foi confirmado integralmente.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
+			if ((string) ($after['effective_state'] ?? '') !== 'POST_ACTIVATION_VERIFIED' || (string) ($after['form_state'] ?? '') !== 'active') return $this->result(Activation_Result::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', 'O estado pós-ativação não foi confirmado integralmente.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
 			if (! $this->inventory_ready($after)) return $this->result(Activation_Result::RECONCILIATION_REQUIRED, 'POST_ACTIVATION_DRIFT', 'O inventário divergiu após a ativação.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
 			return $this->result(Activation_Result::ACTIVATED, 'FORM_ACTIVATED', 'O formulário foi ativado e verificado.', $this->evidence($operation_key, $snapshot_fingerprint, $outcome, $after));
 		} finally { $this->lock->release_choice_lock($publication_key); }

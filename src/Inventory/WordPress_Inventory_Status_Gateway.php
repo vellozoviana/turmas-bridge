@@ -24,6 +24,16 @@ final class WordPress_Inventory_Status_Gateway implements Inventory_Status_Gatew
 
 	/** @return array{status:string,resources:list<array<string,mixed>>,blockers:list<array{code:string,message:string}>} */
 	public function read(string $publication_key, int $form_id, array $form): array {
+		return $this->read_context($publication_key, $form_id, $form, false);
+	}
+
+	/** @return array{status:string,resources:list<array<string,mixed>>,blockers:list<array{code:string,message:string}>} */
+	public function read_post_activation(string $publication_key, int $form_id, array $form): array {
+		return $this->read_context($publication_key, $form_id, $form, true);
+	}
+
+	/** @return array{status:string,resources:list<array<string,mixed>>,blockers:list<array{code:string,message:string}>} */
+	private function read_context(string $publication_key, int $form_id, array $form, bool $post_activation): array {
 		$rows = $this->mappings->list_for_publication($publication_key);
 		$resources = array();
 		$blockers = array();
@@ -68,7 +78,7 @@ final class WordPress_Inventory_Status_Gateway implements Inventory_Status_Gatew
 				if ($representations === array()) throw new \UnexpectedValueException('As representações da Turma não foram encontradas no formulário.');
 				$capacity = $this->capacity($form, $resolved, $identity);
 				$plan = new Resource_Plan($identity, $capacity, $representations, $form_id);
-				$state = $this->operations->inspect($plan, $resource_id);
+				$state = $post_activation ? $this->operations->inspect_post_activation($plan, $resource_id) : $this->operations->inspect($plan, $resource_id);
 				$resources[] = array('class_key' => $class_key, 'resource_id' => $resource_id, 'capacity' => $state['capacity'], 'consumed' => $state['consumed'], 'healthy' => $state['healthy'], 'reason' => $state['reason']);
 				if (! $state['healthy']) $blockers[] = $this->blocker((string) ($state['reason'] ?? 'RESOURCE_NOT_FOUND'));
 			} catch (\UnexpectedValueException|\InvalidArgumentException|Inventory_Integration_Exception $error) {

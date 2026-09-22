@@ -31,6 +31,14 @@ final class PublicationStatusReaderTest extends TestCase {
 		self::assertSame('RECONCILIATION_REQUIRED', $missing['effective_state']);
 	}
 
+	public function test_post_activation_reader_verifies_expected_active_form_without_mutation(): void {
+		$store = new Status_Store(array('status' => 'MATERIALIZED', 'form_id' => 412));
+		$result = (new Publication_Status_Reader($store, new Status_Gravity(array('id' => 412, 'is_active' => true)), new Healthy_Inventory_Status()))->read_post_activation('2099:E2E');
+		self::assertSame('POST_ACTIVATION_VERIFIED', $result['effective_state']);
+		self::assertSame('active', $result['form_state']);
+		self::assertSame(0, $store->mutations);
+	}
+
 	public function test_unknown_publication_is_not_synthesized(): void {
 		$result = (new Publication_Status_Reader(new Status_Store(null), new Status_Gravity(null), new Healthy_Inventory_Status()))->read('2099:E2E');
 
@@ -51,6 +59,7 @@ final class Healthy_Inventory_Status implements Inventory_Status_Gateway {
 	public function read(string $publication_key, int $form_id, array $form): array {
 		return array('status' => 'READY', 'resources' => array(), 'blockers' => array());
 	}
+	public function read_post_activation(string $publication_key, int $form_id, array $form): array { return $this->read($publication_key, $form_id, $form); }
 }
 
 final class Status_Store implements Materialization_Store {

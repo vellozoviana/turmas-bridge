@@ -13,6 +13,7 @@ use TurmasBridge\Activation\Form_Activation_Service;
 use TurmasBridge\Activation\WordPress_Form_Activation_Gateway;
 use TurmasBridge\Materialization\Materialization_Store;
 use TurmasBridge\Publications\Publication_Status_Provider;
+use TurmasBridge\Publications\Post_Activation_Status_Provider;
 
 final class FormActivationServiceTest extends TestCase {
 	public function test_happy_path_activates_once_and_requires_post_read(): void {
@@ -76,6 +77,36 @@ final class FormActivationServiceTest extends TestCase {
 		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code()); self::assertTrue($world->active);
 	}
 
+	public function test_post_activation_wrong_form_identity_requires_reconciliation(): void {
+		$world = new ActivationWorld(); $world->post_form_id = 11; $gateway = new ActivationFakeGateway($world); $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('8', 64));
+		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code());
+	}
+
+	public function test_post_activation_missing_form_requires_reconciliation(): void {
+		$world = new ActivationWorld(); $gateway = new ActivationFakeGateway($world); $world->post_form_state = 'missing'; $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('9', 64));
+		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code());
+	}
+
+	public function test_post_activation_binding_drift_requires_reconciliation(): void {
+		$world = new ActivationWorld(); $world->post_binding_healthy = false; $gateway = new ActivationFakeGateway($world); $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('a', 64));
+		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code());
+	}
+
+	public function test_post_activation_capacity_drift_requires_reconciliation(): void {
+		$world = new ActivationWorld(); $world->post_capacity = 4; $gateway = new ActivationFakeGateway($world); $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('b', 64));
+		self::assertSame(Activation_Result::RECONCILIATION_REQUIRED, $result->status()); self::assertSame('POST_ACTIVATION_DRIFT', $result->code());
+	}
+
+	public function test_legitimate_post_activation_consumption_change_is_not_structural_drift(): void {
+		$world = new ActivationWorld(); $world->post_consumed = 1; $gateway = new ActivationFakeGateway($world); $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('d', 64));
+		self::assertSame(Activation_Result::ACTIVATED, $result->status()); self::assertSame('FORM_ACTIVATED', $result->code());
+	}
+
+	public function test_post_activation_reader_failure_requires_reconciliation(): void {
+		$world = new ActivationWorld(); $world->post_status_error = true; $gateway = new ActivationFakeGateway($world); $result = $this->service($world, $gateway)->activate('2099:E2F', 10, 'op', str_repeat('c', 64));
+		self::assertSame(Activation_Result::UNKNOWN, $result->status()); self::assertSame('POST_ACTIVATION_STATUS_UNAVAILABLE', $result->code());
+	}
+
 	public function test_lock_unavailable_prevents_activation(): void {
 		$world = new ActivationWorld(); $gateway = new ActivationFakeGateway($world); $lock = new ActivationLockStore(); $lock->available = false; $result = (new Form_Activation_Service(new ActivationStatusProvider($world), $gateway, $lock))->activate('2099:E2F', 10, 'op', str_repeat('6', 64));
 		self::assertSame('LOCK_UNAVAILABLE', $result->code()); self::assertSame(0, $gateway->calls);
@@ -116,15 +147,20 @@ final class FormActivationServiceTest extends TestCase {
 }
 
 final class ActivationWorld {
-	public bool $active = false; public bool $form_exists = true; public int $form_id = 10; public string $effective_state = 'MATERIALIZED'; public string $inventory_status = 'READY'; public bool $status_error = false; public bool $drift_after_activation = false; public int $reads = 0;
+	public bool $active = false; public bool $form_exists = true; public int $form_id = 10; public string $effective_state = 'MATERIALIZED'; public string $inventory_status = 'READY'; public bool $status_error = false; public bool $post_status_error = false; public bool $drift_after_activation = false; public int $post_form_id = 10; public string $post_form_state = 'active'; public bool $post_binding_healthy = true; public int $post_capacity = 5; public int $post_consumed = 0; public int $reads = 0;
 }
 
-final class ActivationStatusProvider implements Publication_Status_Provider {
+final class ActivationStatusProvider implements Publication_Status_Provider, Post_Activation_Status_Provider {
 	public function __construct(private ActivationWorld $world) {}
 	public function read(string $publication_key): array|\WP_Error {
 		$this->world->reads++; if ($this->world->status_error) return new \WP_Error('transport_error', 'status unavailable'); if (! $this->world->form_exists) return array('publication_key' => $publication_key, 'effective_state' => 'MATERIALIZED', 'form_id' => $this->world->form_id, 'form_state' => 'missing', 'inventory' => array('status' => 'READY', 'resources' => array()));
 		$drift = $this->world->drift_after_activation && $this->world->active && $this->world->reads > 2;
 		return array('publication_key' => $publication_key, 'effective_state' => $this->world->active ? 'RECONCILIATION_REQUIRED' : $this->world->effective_state, 'form_id' => $this->world->form_id, 'form_state' => $this->world->active ? 'active' : 'inactive', 'inventory' => array('status' => $drift ? 'BLOCKED' : $this->world->inventory_status, 'resources' => array(array('resource_id' => 11, 'capacity' => 5, 'consumed' => 0, 'healthy' => true), array('resource_id' => 12, 'capacity' => 4, 'consumed' => 0, 'healthy' => true))));
+	}
+	public function read_post_activation(string $publication_key): array|\WP_Error {
+		$this->world->reads++; if ($this->world->post_status_error) return new \WP_Error('transport_error', 'status unavailable'); if ($this->world->post_form_state === 'missing') return array('publication_key' => $publication_key, 'effective_state' => 'RECONCILIATION_REQUIRED', 'form_id' => $this->world->post_form_id, 'form_state' => 'missing', 'inventory' => array('status' => 'READY', 'resources' => array()));
+		$healthy = $this->world->active && $this->world->post_form_state === 'active' && $this->world->post_binding_healthy && $this->world->post_capacity === 5 && $this->world->post_consumed <= $this->world->post_capacity && ! $this->world->drift_after_activation;
+		return array('publication_key' => $publication_key, 'effective_state' => $healthy ? 'POST_ACTIVATION_VERIFIED' : 'RECONCILIATION_REQUIRED', 'form_id' => $this->world->post_form_id, 'form_state' => $this->world->post_form_state, 'inventory' => array('status' => $healthy ? 'READY' : 'BLOCKED', 'resources' => array(array('resource_id' => 11, 'capacity' => $this->world->post_capacity, 'consumed' => $this->world->post_consumed, 'healthy' => $healthy))));
 	}
 }
 
