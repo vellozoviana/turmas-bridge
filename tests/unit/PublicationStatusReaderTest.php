@@ -27,7 +27,8 @@ final class PublicationStatusReaderTest extends TestCase {
 		$active = (new Publication_Status_Reader($store, new Status_Gravity(array('id' => 412, 'is_active' => true)), new Healthy_Inventory_Status()))->read('2099:E2E');
 		$missing = (new Publication_Status_Reader($store, new Status_Gravity(null), new Healthy_Inventory_Status()))->read('2099:E2E');
 
-		self::assertSame('RECONCILIATION_REQUIRED', $active['effective_state']);
+		self::assertSame('POST_ACTIVATION_VERIFIED', $active['effective_state']);
+		self::assertSame('READY', $active['inventory']['status']);
 		self::assertSame('RECONCILIATION_REQUIRED', $missing['effective_state']);
 	}
 

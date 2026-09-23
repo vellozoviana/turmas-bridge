@@ -15,7 +15,8 @@ final class Activation_Operation_Orchestrator {
 	public function claim(int $id): Activation_Operation_Transition { return $this->store->transition($id, Activation_Operation_State::PENDING, Activation_Operation_State::IN_PROGRESS); }
 	/** @param array<string,mixed> $evidence */
 	public function succeed(int $id, array $evidence): Activation_Operation_Transition { return $this->store->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::SUCCEEDED, null, $evidence); }
-	public function fail_before_mutation(int $id, string $error_code): Activation_Operation_Transition { return $this->store->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::FAILED, $error_code); }
+	/** @param array<string,mixed> $evidence */
+	public function fail_before_mutation(int $id, string $error_code, array $evidence = array()): Activation_Operation_Transition { return $this->store->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::FAILED, $error_code, $evidence); }
 	/** @param array<string,mixed> $evidence */
 	public function require_reconciliation(int $id, string $error_code, array $evidence = array()): Activation_Operation_Transition { return $this->store->transition($id, Activation_Operation_State::IN_PROGRESS, Activation_Operation_State::RECONCILIATION_REQUIRED, $error_code, $evidence); }
 	public function recover_stale(int $id, string $expected_updated_at): Activation_Operation_Transition { return $this->store->recover_stale($id, $expected_updated_at); }

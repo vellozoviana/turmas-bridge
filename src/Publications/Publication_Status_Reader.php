@@ -25,14 +25,14 @@ final class Publication_Status_Reader implements Publication_Status_Provider, Po
 
 	/** @return array<string,mixed>|\WP_Error */
 	public function read(string $publication_key): array|\WP_Error {
-		return $this->read_context($publication_key, false);
+		return $this->read_context($publication_key);
 	}
 
 	public function read_post_activation(string $publication_key): array|\WP_Error {
-		return $this->read_context($publication_key, true);
+		return $this->read_context($publication_key);
 	}
 
-	private function read_context(string $publication_key, bool $post_activation): array|\WP_Error {
+	private function read_context(string $publication_key): array|\WP_Error {
 		if (! preg_match('/^\d{4}:[A-Z0-9_-]{1,50}$/', $publication_key)) {
 			return new \WP_Error('turmas_bridge_invalid_publication_key', 'A chave da Publicação é inválida.', array('status' => 400));
 		}
@@ -54,7 +54,7 @@ final class Publication_Status_Reader implements Publication_Status_Provider, Po
 				$form_state = 'missing';
 			} elseif (! empty($form['is_active'])) {
 				$form_state = 'active';
-				if ($post_activation) $inventory_state = $this->inventory->read_post_activation($publication_key, $form_id, $form);
+				$inventory_state = $this->inventory->read_post_activation($publication_key, $form_id, $form);
 			} else {
 				$form_state = 'inactive';
 				$inventory_state = $this->inventory->read($publication_key, $form_id, $form);
@@ -62,7 +62,7 @@ final class Publication_Status_Reader implements Publication_Status_Provider, Po
 		}
 
 		$status = (string) ($record['status'] ?? '');
-		$effective = $post_activation && $form_state === 'active'
+		$effective = $form_state === 'active'
 			? ($status === 'MATERIALIZED' && (string) $inventory_state['status'] === 'READY' ? 'POST_ACTIVATION_VERIFIED' : 'RECONCILIATION_REQUIRED')
 			: ($status === 'MATERIALIZED' && $form_state === 'inactive' && (string) $inventory_state['status'] === 'READY' ? 'MATERIALIZED' : ($status === 'FAILED' ? 'FAILED' : 'RECONCILIATION_REQUIRED'));
 

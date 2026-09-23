@@ -20,7 +20,7 @@ final class RemoteActivationCommandServiceTest extends TestCase {
 		$store = new Remote_Activation_Fake_Store(); $b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::ACTIVATED, 'FORM_ACTIVATED', 'ok')); $service = $this->service($store, $b2);
 		$result = $service->execute($this->command());
 
-		self::assertSame(201, $result->http_status()); self::assertSame('activation_succeeded', $result->code()); self::assertSame(Activation_Operation_State::SUCCEEDED, $result->state()); self::assertSame(1, $b2->calls); self::assertSame(Activation_Operation_State::SUCCEEDED, $store->record['state']);
+		self::assertSame(201, $result->http_status()); self::assertSame('activation_succeeded', $result->code()); self::assertSame(Activation_Operation_State::SUCCEEDED, $result->state()); self::assertSame(str_repeat('a', 64), $result->to_array()['snapshot_fingerprint']); self::assertSame(1, $b2->calls); self::assertSame(Activation_Operation_State::SUCCEEDED, $store->record['state']);
 	}
 
 	public function test_success_replay_does_not_call_b2(): void {
@@ -69,16 +69,44 @@ final class RemoteActivationCommandServiceTest extends TestCase {
 
 	public function test_safe_b2_block_is_failed_but_unknown_is_reconciliation(): void {
 		$store = new Remote_Activation_Fake_Store(); $b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::BLOCKED, 'PUBLICATION_NOT_MATERIALIZED', 'blocked')); $result = $this->service($store, $b2)->execute($this->command());
-		self::assertSame(422, $result->http_status()); self::assertSame(Activation_Operation_State::FAILED, $store->record['state']);
+		self::assertSame(422, $result->http_status()); self::assertSame(Activation_Operation_State::FAILED, $store->record['state']); self::assertSame(array('mutation_safety' => 'NO_MUTATION', 'retry_disposition' => 'RETRYABLE'), $result->to_array()['failure_disposition']);
 
 		$store = new Remote_Activation_Fake_Store(); $b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::UNKNOWN, 'FORM_ACTIVATION_UNKNOWN', 'unknown')); $result = $this->service($store, $b2)->execute($this->command());
 		self::assertSame(409, $result->http_status()); self::assertSame(Activation_Operation_State::RECONCILIATION_REQUIRED, $store->record['state']);
+	}
+
+	public function test_bridge_exposes_retryable_only_for_allowlisted_pre_mutation_transient_failure(): void {
+		foreach (array('GRAVITY_FORMS_UNAVAILABLE' => 'RETRYABLE', 'STATUS_UNAVAILABLE' => 'RETRYABLE', 'LOCK_UNAVAILABLE' => 'RETRYABLE', 'PUBLICATION_NOT_MATERIALIZED' => 'RETRYABLE', 'FORM_NOT_INACTIVE' => 'RETRYABLE', 'INVENTORY_NOT_HEALTHY' => 'RETRYABLE', 'FORM_NOT_FOUND' => 'NOT_RETRYABLE', 'UNKNOWN_FUTURE_FAILURE' => 'NOT_RETRYABLE') as $code => $expected) {
+			$store = new Remote_Activation_Fake_Store(); $b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::BLOCKED, $code, 'blocked')); $service = $this->service($store, $b2);
+			$service->execute($this->command()); $status = $service->status((string) $store->record['operation_key'])->to_array();
+			self::assertSame('NO_MUTATION_EVIDENCE', $store->record['evidence_json']['activation_mutation']['state']);
+			self::assertSame('NO_MUTATION', $status['failure_disposition']['mutation_safety']); self::assertSame($expected, $status['failure_disposition']['retry_disposition']);
+		}
+	}
+
+	public function test_bridge_never_classifies_uncertain_or_confirmed_mutation_as_retryable(): void {
+		$store = new Remote_Activation_Fake_Store(); $store->seed(Activation_Operation_State::RECONCILIATION_REQUIRED); $store->record['evidence_json'] = array('activation_mutation' => Activation_Mutation_Evidence::uncertain(10)->to_array());
+		$status = (new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), new Remote_Activation_Fake_B2(null)))->status((string) $store->record['operation_key'])->to_array();
+		self::assertSame('MUTATION_UNCERTAIN', $status['failure_disposition']['mutation_safety']); self::assertSame('RECONCILIATION_REQUIRED', $status['failure_disposition']['retry_disposition']);
+
+		$store->record['evidence_json'] = array('activation_mutation' => Activation_Mutation_Evidence::from_verified_gateway(new \TurmasBridge\Activation\Form_Activation_Outcome('INACTIVE', true, 'ACTIVE', true), '2099:E2F', 10, array('publication_key' => '2099:E2F', 'form_id' => 10, 'form_state' => 'active'))->to_array());
+		$status = (new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), new Remote_Activation_Fake_B2(null)))->status((string) $store->record['operation_key'])->to_array();
+		self::assertSame('MUTATION_CONFIRMED', $status['failure_disposition']['mutation_safety']); self::assertSame('RECONCILIATION_REQUIRED', $status['failure_disposition']['retry_disposition']);
 	}
 
 	public function test_b2_exception_is_fail_closed_without_retry(): void {
 		$store = new Remote_Activation_Fake_Store(); $b2 = new Remote_Activation_Fake_B2(null, true); $result = $this->service($store, $b2)->execute($this->command());
 
 		self::assertSame(409, $result->http_status()); self::assertSame(Activation_Operation_State::RECONCILIATION_REQUIRED, $store->record['state']); self::assertSame(1, $b2->calls);
+	}
+
+	public function test_blocked_outcome_with_nonempty_mutation_evidence_is_reconciliation_not_failed(): void {
+		$store = new Remote_Activation_Fake_Store();
+		$mutation = Activation_Mutation_Evidence::uncertain(10, 'b2_gateway_error');
+		$b2 = new Remote_Activation_Fake_B2(new Activation_Result(Activation_Result::BLOCKED, 'LOCK_UNAVAILABLE', 'blocked', array(), $mutation));
+		$result = $this->service($store, $b2)->execute($this->command());
+		self::assertSame(409, $result->http_status());
+		self::assertSame(Activation_Operation_State::RECONCILIATION_REQUIRED, $store->record['state']);
 	}
 
 	public function test_success_persistence_failure_returns_reconciliation_without_claiming_success(): void {
@@ -139,6 +167,8 @@ final class RemoteActivationCommandServiceTest extends TestCase {
 		$result = (new Remote_Activation_Command_Service(new Activation_Operation_Orchestrator($store), new Remote_Activation_Fake_B2(null)))->status('publish-2099:E2F-v1');
 
 		self::assertArrayHasKey('error_code', $result->to_array()); self::assertNull($result->to_array()['error_code']);
+		self::assertSame(str_repeat('a', 64), $result->to_array()['snapshot_fingerprint']);
+		self::assertSame(array(), $result->to_array()['activation_evidence']);
 	}
 
 	/** @param array<string,mixed>|null $outcome */

@@ -6,7 +6,7 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.9.3`. Versão do contrato REST: `v1`. Schema local: `0.8.0`.
+Versão pública atual: `0.10.0`. Versão do contrato REST: `v1`. Schema local: `0.8.0`.
 
 ## Escopo atual
 
