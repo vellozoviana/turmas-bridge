@@ -1,7 +1,9 @@
 # 12F-B4-P1 — Action 5 and final publication hardening (Astra candidate)
 
-Isolated Astra review only. No physical LAB state, schema, plugin version,
-institutional service, or external form was changed by this candidate.
+The original Astra candidate did not change physical LAB state, schema or
+plugin version. Its subsequent R1 review adds strict header/version rules and
+patch versions Bridge 0.10.1 / EPF 0.13.2; see HMAC-V2-CONTRACT.md.
+No physical LAB command, schema migration or institutional access is included.
 
 ## Materialization
 

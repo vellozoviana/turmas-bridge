@@ -1,0 +1,22 @@
+{
+  "description": "Public synthetic contract vector; contains no HMAC secret or runtime data.",
+  "contract_version": "v2",
+  "method": "POST",
+  "route": " /turmas-bridge/v1/publicacoes/ ",
+  "query": {
+    "z": "9",
+    "nested": {
+      "b": "ação",
+      "a": "/"
+    },
+    "alpha": "one two",
+    "rest_route": "/ignored"
+  },
+  "timestamp": "1760000000",
+  "nonce": "synthetic-nonce-vector-0001",
+  "body": "{\"label\":\"Turma sintética\",\"capacity\":3}",
+  "canonical_request": "v2\nPOST\n/turmas-bridge/v1/publicacoes\nalpha=one%20two&nested%5Ba%5D=%2F&nested%5Bb%5D=a%C3%A7%C3%A3o&z=9\n1760000000\nsynthetic-nonce-vector-0001\nidempotency-key:publication-4-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\nf4ad81e1b9366011f2f135099cd77718e2edc628393afe8b527c6cbd98271de9",
+  "canonical_sha256": "3a1b9fc8c676c8aad65586cfb97e360889251c5769902a61c83fd752f828a5b6",
+  "idempotency_key": "publication-4-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "body_hash": "f4ad81e1b9366011f2f135099cd77718e2edc628393afe8b527c6cbd98271de9"
+}

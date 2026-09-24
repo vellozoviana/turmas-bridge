@@ -33,13 +33,13 @@ final class Request_Authenticator {
 			return $this->error('turmas_bridge_not_configured', 'A ponte não está configurada.', 503);
 		}
 
-		$timestamp = trim((string) $request->get_header(self::TIMESTAMP_HEADER));
-		$nonce = trim((string) $request->get_header(self::NONCE_HEADER));
-		$signature = trim((string) $request->get_header(self::SIGNATURE_HEADER));
+		$timestamp = $this->single_header($request, self::TIMESTAMP_HEADER);
+		$nonce = $this->single_header($request, self::NONCE_HEADER);
+		$signature = $this->single_header($request, self::SIGNATURE_HEADER);
 		$method = strtoupper($request->get_method());
-		$idempotency_key = $method === 'POST' ? trim((string) $request->get_header('idempotency-key')) : null;
-		$signature_version = Canonical_Request::signature_version($method, $idempotency_key);
-		if (! preg_match('/^\d{10}$/', $timestamp) || ! preg_match('/^[A-Za-z0-9._~-]{16,128}$/', $nonce) || ($method === 'POST' && $idempotency_key === '') || ! preg_match('/^' . preg_quote($signature_version, '/') . '=[a-f0-9]{64}$/', $signature)) {
+		$idempotency_key = $method === 'POST' ? Canonical_Request::normalise_idempotency_key($this->single_header($request, 'idempotency-key')) : null;
+		$signature_version = Canonical_Request::signature_version($method);
+		if (! in_array($method, array('GET', 'POST'), true) || $timestamp === null || $nonce === null || $signature === null || ! preg_match('/\A\d{10}\z/', $timestamp) || ! preg_match('/\A[A-Za-z0-9._~-]{16,128}\z/', $nonce) || ($method === 'POST' && $idempotency_key === null) || ! preg_match('/\A' . preg_quote($signature_version, '/') . '=[a-f0-9]{64}\z/', $signature)) {
 			return $this->unauthorized();
 		}
 
@@ -66,6 +66,12 @@ final class Request_Authenticator {
 		}
 
 		return true;
+	}
+
+	private function single_header(\WP_REST_Request $request, string $name): ?string {
+		$values = $request->get_header_as_array($name);
+		if (! is_array($values) || count($values) !== 1 || ! is_string($values[0] ?? null)) return null;
+		return trim($values[0], " \t");
 	}
 
 	private function unauthorized(): \WP_Error {

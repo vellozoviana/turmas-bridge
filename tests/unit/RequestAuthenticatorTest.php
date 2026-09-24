@@ -100,7 +100,7 @@ final class RequestAuthenticatorTest extends TestCase {
 
 	public function test_legacy_v1_post_signature_is_rejected_for_idempotent_commands(): void {
 		$request = $this->signed_post_request('signed-command-key-0001');
-		$legacy_canonical = Canonical_Request::build('POST', '/turmas-bridge/v1/publicacoes', array(), (string) self::NOW, 'nonce-post-idempotency-0001', '{"safe":true}');
+		$legacy_canonical = implode("\n", array('v1', 'POST', '/turmas-bridge/v1/publicacoes', '', (string) self::NOW, 'nonce-post-idempotency-0001', hash('sha256', '{"safe":true}')));
 		$request->set_header(Request_Authenticator::SIGNATURE_HEADER, 'v1=' . hash_hmac('sha256', $legacy_canonical, self::SECRET));
 
 		self::assertInstanceOf(\WP_Error::class, $this->authenticator()->authenticate($request));
@@ -122,13 +122,17 @@ final class RequestAuthenticatorTest extends TestCase {
 		);
 	}
 
-	public function test_nested_query_fixture_matches_the_canonical_hmac_contract(): void {
+	public function test_historical_nested_query_vector_is_upgraded_to_v2_for_post_commands(): void {
 		$fixture = $this->nested_fixture();
-		$canonical = Canonical_Request::build((string) $fixture['method'], (string) $fixture['route'], (array) $fixture['query'], (string) $fixture['timestamp'], (string) $fixture['nonce'], (string) $fixture['body']);
+		$key = 'synthetic-legacy-vector-key-0001';
+		$canonical = Canonical_Request::build((string) $fixture['method'], (string) $fixture['route'], (array) $fixture['query'], (string) $fixture['timestamp'], (string) $fixture['nonce'], (string) $fixture['body'], $key);
+		$expected = explode("\n", (string) $fixture['canonical_request']);
+		$expected[0] = 'v2';
+		array_splice($expected, 6, 0, array('idempotency-key:' . $key));
 
 		self::assertSame((string) $fixture['body_hash'], hash('sha256', (string) $fixture['body']));
-		self::assertSame((string) $fixture['canonical_request'], $canonical);
-		self::assertSame((string) $fixture['signature'], 'v1=' . hash_hmac('sha256', $canonical, (string) $fixture['test_secret']));
+		self::assertSame(implode("\n", $expected), $canonical);
+		self::assertSame((string) $fixture['signature'], 'v1=' . hash_hmac('sha256', (string) $fixture['canonical_request'], (string) $fixture['test_secret']));
 	}
 
 	public function test_authenticator_uses_timing_safe_signature_comparison(): void {
@@ -178,7 +182,7 @@ final class RequestAuthenticatorTest extends TestCase {
 		$request->set_header(Request_Authenticator::TIMESTAMP_HEADER, (string) self::NOW);
 		$request->set_header(Request_Authenticator::NONCE_HEADER, $nonce);
 		$canonical = Canonical_Request::build('POST', '/turmas-bridge/v1/publicacoes', array(), (string) self::NOW, $nonce, $body, $idempotency_key);
-		$request->set_header(Request_Authenticator::SIGNATURE_HEADER, Canonical_Request::signature_version('POST', $idempotency_key) . '=' . hash_hmac('sha256', $canonical, self::SECRET));
+		$request->set_header(Request_Authenticator::SIGNATURE_HEADER, Canonical_Request::signature_version('POST') . '=' . hash_hmac('sha256', $canonical, self::SECRET));
 
 		return $request;
 	}

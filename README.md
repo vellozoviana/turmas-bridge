@@ -6,7 +6,12 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.10.0`. Versão do contrato REST: `v1`. Schema local: `0.8.0`.
+Versão pública atual: `0.10.1`. Versão do contrato REST: `v1`. Schema local: `0.8.0`.
+
+Esta correção requer EPF `0.13.2` para comandos POST: HMAC v2 autentica também
+Idempotency-Key e rejeita downgrade, valores inválidos e headers duplicados.
+GET mantém HMAC v1. Consulte [o contrato exato](docs/HMAC-V2-CONTRACT.md) e
+[a matriz de atualização coordenada](docs/MIXED-VERSION-MATRIX.md).
 
 ## Escopo atual
 

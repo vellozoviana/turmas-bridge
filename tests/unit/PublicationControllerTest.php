@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace TurmasBridge\Tests\Unit;
 
 use PHPUnit\Framework\TestCase;
+use TurmasBridge\Auth\Canonical_Request;
+use TurmasBridge\Auth\Request_Authenticator;
+use TurmasBridge\Config\Secret_Provider;
 use TurmasBridge\Publications\Publication_Command_Store;
 use TurmasBridge\Publications\Publication_Controller;
 use TurmasBridge\Materialization\Publication_Materializer;
@@ -135,6 +138,44 @@ final class PublicationControllerTest extends TestCase {
 		self::assertSame(201, $first->get_status());
 		for ($attempt = 0; $attempt < 10; $attempt++) self::assertTrue($controller->receive($this->request($this->payload(), 'idempotency-ten-retries-01'))->get_data()['idempotent_replay']);
 		self::assertSame(1, $materializer->calls);
+	}
+
+	public function test_authenticated_replay_refreshes_nonce_but_reuses_one_business_command(): void {
+		$secret = 'synthetic-authenticated-replay-secret';
+		$GLOBALS['turmas_bridge_test_options'] = array(Secret_Provider::OPTION_NAME => $secret);
+		$GLOBALS['turmas_bridge_test_ssl'] = true;
+		$GLOBALS['turmas_bridge_test_add_option_failure'] = false;
+		$store = new Memory_Command_Store();
+		$materializer = new Fake_Materializer();
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
+		$auth = new Request_Authenticator(clock: static fn (): int => 1760000000);
+		$dispatch = static function (\WP_REST_Request $request) use ($auth, $controller): \WP_REST_Response|\WP_Error {
+			$permission = $auth->authenticate($request);
+			return is_wp_error($permission) ? $permission : $controller->receive($request);
+		};
+		for ($attempt = 0; $attempt < 2; $attempt++) {
+			$request = $this->request($this->payload(), 'synthetic-idempotent-command-001');
+			$timestamp = (string) (1760000000 + $attempt);
+			$nonce = 'synthetic-business-replay-nonce-' . $attempt;
+			$request->set_header(Request_Authenticator::TIMESTAMP_HEADER, $timestamp);
+			$request->set_header(Request_Authenticator::NONCE_HEADER, $nonce);
+			$canonical = Canonical_Request::build('POST', $request->get_route(), array(), $timestamp, $nonce, $request->get_body(), $request->get_header('Idempotency-Key'));
+			$request->set_header(Request_Authenticator::SIGNATURE_HEADER, 'v2=' . hash_hmac('sha256', $canonical, $secret));
+			if ($attempt === 0) {
+				$bad = clone $request;
+				$bad->set_header('Idempotency-Key', 'synthetic-injected-command-001');
+				self::assertSame('turmas_bridge_unauthorized', $dispatch($bad)->get_error_code());
+				self::assertSame(array(), $store->records);
+				self::assertSame(0, $materializer->calls);
+			}
+			$response = $dispatch($request);
+			self::assertInstanceOf(\WP_REST_Response::class, $response);
+			self::assertSame($attempt === 1, $response->get_data()['idempotent_replay']);
+			self::assertSame('turmas_bridge_unauthorized', $dispatch($request)->get_error_code());
+		}
+		self::assertCount(1, $store->records);
+		self::assertSame(1, $materializer->calls);
+		self::assertSame(1, $store->writes);
 	}
 
 	/** @param array<string,mixed> $payload */

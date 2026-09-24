@@ -22,7 +22,7 @@ class WP_Error {
 }
 
 class WP_REST_Request {
-	/** @var array<string, string> */
+	/** @var array<string, list<string>> */
 	private array $headers = array();
 	/** @var array<string, mixed> */
 	private array $query = array();
@@ -35,8 +35,13 @@ class WP_REST_Request {
 	public function set_method(string $method): void { $this->method = $method; }
 	public function get_route(): string { return $this->route; }
 	public function set_route(string $route): void { $this->route = $route; }
-	public function get_header(string $name): string { return $this->headers[strtolower($name)] ?? ''; }
-	public function set_header(string $name, string $value): void { $this->headers[strtolower($name)] = $value; }
+	public function get_header(string $name): string { return implode(',', $this->get_header_as_array($name) ?? array()); }
+	/** @return list<string>|null */
+	public function get_header_as_array(string $name): ?array { return $this->headers[self::canonicalize_header_name($name)] ?? null; }
+	/** @param string|list<string> $value */
+	public function set_header(string $name, string|array $value): void { $this->headers[self::canonicalize_header_name($name)] = (array) $value; }
+	public function add_header(string $name, string $value): void { $this->headers[self::canonicalize_header_name($name)][] = $value; }
+	private static function canonicalize_header_name(string $name): string { return str_replace('-', '_', strtolower($name)); }
 	/** @return array<string, mixed> */
 	public function get_query_params(): array { return $this->query; }
 	/** @param array<string, mixed> $query */
