@@ -8,10 +8,18 @@ ela não indica que um formulário exista.
 ## Autenticação e idempotência
 
 São obrigatórios `X-Turmas-Bridge-Timestamp`, `X-Turmas-Bridge-Nonce`,
-`X-Turmas-Bridge-Signature` e `Idempotency-Key`. A assinatura é
-`v1=<HMAC-SHA256>` do canonical request `v1`, método, rota, query canônica,
-timestamp, nonce e SHA-256 do body, cada item em uma linha. Nonce protege a
-requisição assinada; Idempotency-Key identifica o comando lógico.
+`X-Turmas-Bridge-Signature` e `Idempotency-Key` nos POSTs de comando. GET usa
+canonicalização HMAC v1 e prefixo `v1=`. POST usa canonicalização HMAC v2 e
+prefixo `v2=`: além de método, rota, query canônica, timestamp, nonce e SHA-256
+do body, assina `idempotency-key:<valor>` antes do hash. Alterar/remover a
+chave invalida a assinatura. Host, scheme e porta continuam fora da string
+canônica. Timestamp/nonce protegem o transporte; Idempotency-Key identifica
+o comando lógico.
+
+A mudança POST v2 é incompatível com clientes anteriores. EPF e Bridge devem
+ser atualizados juntos e não devem processar comandos POST durante rollout
+misto. GET v1 permanece compatível. Os fixtures HMAC v1 preservados são
+vetores históricos; os testes atuais cobrem o contrato POST v2.
 
 O schema `1` usa `publication_key` `{ano}:{codigo_formacao}` e `class_key`
 `{publication_key}:{codigo_turma}`. Cada Turma leva nomes derivados,

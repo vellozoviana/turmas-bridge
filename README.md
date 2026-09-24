@@ -42,15 +42,15 @@ com fixtures fictícias. Sua compatibilidade depende dos internals observados
 do fornecedor; a estratégia de drift, concorrência e upgrade está documentada
 em `docs/fase-12d-c-adapter-gp-inventory.md`.
 
-## Contrato HMAC v1
+## Contrato de assinatura HMAC
 
 Todos os pedidos devem usar HTTPS em produção e incluir:
 
 - `X-Turmas-Bridge-Timestamp`: Unix timestamp em UTC;
 - `X-Turmas-Bridge-Nonce`: valor aleatório entre 16 e 128 caracteres;
-- `X-Turmas-Bridge-Signature`: `v1=` seguido de HMAC-SHA256 em hexadecimal.
+- `X-Turmas-Bridge-Signature`: `v1=` para GET e `v2=` para POST, seguido de HMAC-SHA256 em hexadecimal.
 
-A string canônica é formada por sete linhas, nesta ordem:
+As consultas GET usam canonicalização HMAC v1, formada por sete linhas:
 
 ```text
 v1
@@ -76,10 +76,18 @@ Após uma assinatura válida, o nonce é reservado por `add_option()` sob chave
 derivada por SHA-256 até o fim de sua janela autenticável; a unicidade de
 `option_name` impede dois claims concorrentes. A limpeza é agendada por
 WP-Cron e falhas de persistência recebem `401` (fail closed).
-A assinatura é `v1=` seguida do HMAC-SHA256 hexadecimal minúsculo e é
-comparada com `hash_equals`. Operações GET não usam idempotency key. O POST de
-Publicações exige `Idempotency-Key`: a mesma chave com o mesmo corpo reproduz
-a resposta; com corpo distinto recebe `409`.
+A assinatura GET é `v1=` seguida do HMAC-SHA256 hexadecimal minúsculo e é
+comparada com `hash_equals`. GET não usa Idempotency-Key. Todos os POSTs de
+comando exigem chave e usam canonicalização HMAC v2: as linhas da v1 mais
+`idempotency-key:<valor>` antes do hash do corpo. A assinatura usa o prefixo
+`v2=`. Alterar/remover a chave invalida a assinatura antes do controller.
+Chave+corpo iguais reproduzem o resultado idempotente; a mesma chave com corpo
+distinto recebe `409`.
+
+A v2 é incompatível com clientes POST antigos. EPF e Bridge precisam ser
+atualizados como par; não envie comandos POST durante rollout misto. GET v1
+permanece compatível. Os arquivos `docs/fixtures/*hmac-v1*` preservam vetores
+históricos v1 e não representam o novo POST v2.
 
 O contrato é próprio, documentado e versionado, e permanece independente de
 outros bridges institucionais. Qualquer interoperabilidade futura exige

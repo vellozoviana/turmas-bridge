@@ -85,6 +85,27 @@ final class RequestAuthenticatorTest extends TestCase {
 		self::assertInstanceOf(\WP_Error::class, $this->authenticator()->authenticate($body_changed));
 	}
 
+	public function test_post_signature_binds_the_idempotency_key_header(): void {
+		$changed = $this->signed_post_request('signed-command-key-0001');
+		$changed->set_header('Idempotency-Key', 'injected-command-key-0002');
+		$result = $this->authenticator()->authenticate($changed);
+
+		self::assertInstanceOf(\WP_Error::class, $result, 'Changing a semantics-bearing command identity must invalidate the HMAC.');
+		self::assertSame('turmas_bridge_unauthorized', $result->get_error_code());
+
+		$removed = $this->signed_post_request('signed-command-key-0001');
+		$removed->set_header('Idempotency-Key', '');
+		self::assertInstanceOf(\WP_Error::class, $this->authenticator()->authenticate($removed));
+	}
+
+	public function test_legacy_v1_post_signature_is_rejected_for_idempotent_commands(): void {
+		$request = $this->signed_post_request('signed-command-key-0001');
+		$legacy_canonical = Canonical_Request::build('POST', '/turmas-bridge/v1/publicacoes', array(), (string) self::NOW, 'nonce-post-idempotency-0001', '{"safe":true}');
+		$request->set_header(Request_Authenticator::SIGNATURE_HEADER, 'v1=' . hash_hmac('sha256', $legacy_canonical, self::SECRET));
+
+		self::assertInstanceOf(\WP_Error::class, $this->authenticator()->authenticate($request));
+	}
+
 	public function test_insecure_transport_is_rejected_without_explicit_local_override(): void {
 		$GLOBALS['turmas_bridge_test_ssl'] = false;
 		$result = $this->authenticator()->authenticate($this->signed_request());
@@ -144,6 +165,20 @@ final class RequestAuthenticatorTest extends TestCase {
 		$request->set_header(Request_Authenticator::TIMESTAMP_HEADER, $timestamp_text);
 		$request->set_header(Request_Authenticator::NONCE_HEADER, $nonce);
 		$request->set_header(Request_Authenticator::SIGNATURE_HEADER, 'v1=' . hash_hmac('sha256', $canonical, $secret));
+
+		return $request;
+	}
+
+	private function signed_post_request(string $idempotency_key): \WP_REST_Request {
+		$request = new \WP_REST_Request('POST', '/turmas-bridge/v1/publicacoes');
+		$nonce = 'nonce-post-idempotency-0001';
+		$body = '{"safe":true}';
+		$request->set_body($body);
+		$request->set_header('Idempotency-Key', $idempotency_key);
+		$request->set_header(Request_Authenticator::TIMESTAMP_HEADER, (string) self::NOW);
+		$request->set_header(Request_Authenticator::NONCE_HEADER, $nonce);
+		$canonical = Canonical_Request::build('POST', '/turmas-bridge/v1/publicacoes', array(), (string) self::NOW, $nonce, $body, $idempotency_key);
+		$request->set_header(Request_Authenticator::SIGNATURE_HEADER, Canonical_Request::signature_version('POST', $idempotency_key) . '=' . hash_hmac('sha256', $canonical, self::SECRET));
 
 		return $request;
 	}

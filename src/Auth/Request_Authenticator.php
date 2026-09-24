@@ -36,7 +36,10 @@ final class Request_Authenticator {
 		$timestamp = trim((string) $request->get_header(self::TIMESTAMP_HEADER));
 		$nonce = trim((string) $request->get_header(self::NONCE_HEADER));
 		$signature = trim((string) $request->get_header(self::SIGNATURE_HEADER));
-		if (! preg_match('/^\d{10}$/', $timestamp) || ! preg_match('/^[A-Za-z0-9._~-]{16,128}$/', $nonce) || ! preg_match('/^v1=[a-f0-9]{64}$/', $signature)) {
+		$method = strtoupper($request->get_method());
+		$idempotency_key = $method === 'POST' ? trim((string) $request->get_header('idempotency-key')) : null;
+		$signature_version = Canonical_Request::signature_version($method, $idempotency_key);
+		if (! preg_match('/^\d{10}$/', $timestamp) || ! preg_match('/^[A-Za-z0-9._~-]{16,128}$/', $nonce) || ($method === 'POST' && $idempotency_key === '') || ! preg_match('/^' . preg_quote($signature_version, '/') . '=[a-f0-9]{64}$/', $signature)) {
 			return $this->unauthorized();
 		}
 
@@ -51,9 +54,10 @@ final class Request_Authenticator {
 			$request->get_query_params(),
 			$timestamp,
 			$nonce,
-			(string) $request->get_body()
+			(string) $request->get_body(),
+			$idempotency_key
 		);
-		$expected = 'v1=' . hash_hmac('sha256', $canonical, $this->secrets->get());
+		$expected = $signature_version . '=' . hash_hmac('sha256', $canonical, $this->secrets->get());
 		if (! hash_equals($expected, $signature)) {
 			return $this->unauthorized();
 		}
