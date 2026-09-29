@@ -35,17 +35,19 @@ final class CapacityContractTest extends TestCase {
 	}
 	public function test_routes_are_authenticated_and_status_is_get_only(): void {
 		$GLOBALS['turmas_bridge_test_routes'] = array(); Capacity_Controller::register_routes();
-		self::assertCount(3, $GLOBALS['turmas_bridge_test_routes']);
+		self::assertCount(4, $GLOBALS['turmas_bridge_test_routes']);
 		foreach ($GLOBALS['turmas_bridge_test_routes'] as $i => $r) {
 			self::assertSame(array(Bridge_Controller::class, 'authenticate'), $r['arguments']['permission_callback']);
 			self::assertSame($i === 1 ? 'GET' : 'POST', $r['arguments']['methods']);
 		}
+		self::assertSame('/capacidades/(?P<operation_key>capacity-[a-f0-9]{64})/retry', $GLOBALS['turmas_bridge_test_routes'][3]['route']);
 	}
 	public function test_missing_or_mismatched_identity_never_reaches_capacity_service(): void {
 		$r = new \WP_REST_Request('POST', '/turmas-bridge/v1/capacidades'); $r->set_body($this->vector()['body']);
 		self::assertSame(409, Capacity_Controller::apply($r)->get_error_data()['status']);
 		$r->set_header('Idempotency-Key', $this->vector()['command']['operation_key']); $r->set_param('operation_key', 'different');
 		self::assertSame(409, Capacity_Controller::reconcile($r)->get_error_data()['status']);
+		self::assertSame(409, Capacity_Controller::retry($r)->get_error_data()['status']);
 		$r->set_body('{invalid');
 		self::assertSame(422, Capacity_Controller::apply($r)->get_error_data()['status']);
 	}

@@ -4,20 +4,20 @@ namespace TurmasBridge\Capacity;
 
 final class Capacity_Service {
 	public function __construct(private Capacity_Store $store = new Capacity_Repository(), private Capacity_Gateway $gateway = new WordPress_Capacity_Gateway()) {}
-	public function execute(mixed $input, bool $reconcile = false): array|\WP_Error {
+	public function execute(mixed $input, bool $reconcile = false, bool $retry_prewrite_failure = false): array|\WP_Error {
 		$c = Capacity_Command::validate($input);
 		if (is_wp_error($c)) return $c;
 		try { if (! $this->gateway->lock($c['class_key'])) return $this->error('CAPACITY_LOCKED', 409); }
 		catch (\Throwable) { return $this->error('CAPACITY_LOCK_UNAVAILABLE', 503); }
 		$release_failed = false;
-		try { $result = $this->execute_locked($c, $reconcile); }
+		try { $result = $this->execute_locked($c, $reconcile, $retry_prewrite_failure); }
 		finally {
 			try { $this->gateway->unlock($c['class_key']); }
 			catch (\Throwable) { $release_failed = true; }
 		}
 		return $release_failed ? $this->error('CAPACITY_UNLOCK_UNCONFIRMED', 503) : $result;
 	}
-	private function execute_locked(array $c, bool $reconcile): array|\WP_Error {
+	private function execute_locked(array $c, bool $reconcile, bool $retry_prewrite_failure): array|\WP_Error {
 		$r = null; $possible_effect = false;
 		try {
 			$r = $this->store->find($c['operation_key']);
@@ -30,8 +30,15 @@ final class Capacity_Service {
 				$r = $this->store->find($c['operation_key']);
 			}
 			if (! $r) return $this->error('CAPACITY_STORE_FAILED', 503);
+			if ($retry_prewrite_failure && $r['state'] !== 'FAILED' && $r['state'] !== 'APPLIED_VERIFIED') return $this->error('CAPACITY_RETRY_NOT_SAFE', 409);
 			if ($r['state'] === 'APPLIED_VERIFIED' && ! $reconcile) return self::response($r, true);
-			if ($r['state'] === 'FAILED' && ! $reconcile) return self::response($r, true);
+			if ($r['state'] === 'FAILED' && ! $reconcile) {
+				if (! $retry_prewrite_failure) return self::response($r, true);
+				if (($r['error_code'] ?? '') !== 'INSPECTION_FAILED') return $this->error('CAPACITY_RETRY_NOT_SAFE', 409);
+				$retry = $this->store->transition($r, 'PENDING', array('retry_authorized' => true), 'EXPLICIT_PRE_WRITE_RETRY');
+				if (! $retry) return $this->error('CAPACITY_STORE_FAILED', 503);
+				$r = $retry;
+			}
 			$possible_effect = in_array($r['state'], array('APPLYING', 'RECONCILIATION_REQUIRED', 'APPLIED_VERIFIED'), true);
 			if ($possible_effect && ! $reconcile) return $this->finish($r, 'RECONCILIATION_REQUIRED', array(), 'EXPLICIT_RECONCILIATION_REQUIRED');
 			$conflict = $this->store->conflict($c);
@@ -55,11 +62,11 @@ final class Capacity_Service {
 			$evidence = array('observation' => $after, 'capacity_after' => $after['capacity'] ?? null, 'consumed_after' => $after['consumed'] ?? null);
 			if (! $this->healthy($after) || ! empty($after['form_active']) || $after['capacity'] !== $c['desired_capacity'] || $after['consumed'] > $c['desired_capacity'] || ($after['resource_id'] ?? null) !== ($before['resource_id'] ?? null) || ($after['bindings'] ?? null) !== ($before['bindings'] ?? null)) return $this->finish($r, 'RECONCILIATION_REQUIRED', $evidence, 'POST_WRITE_DIVERGENCE');
 			return $this->finish($r, 'APPLIED_VERIFIED', $evidence, null);
-		} catch (Capacity_Integrity_Exception) {
-			if ($r) return $this->finish($r, 'RECONCILIATION_REQUIRED', array(), 'INVENTORY_INTEGRITY_UNVERIFIED', true);
+		} catch (Capacity_Integrity_Exception $error) {
+			if ($r) return $this->finish($r, 'RECONCILIATION_REQUIRED', array('integrity_code' => $error->integrity_code()), $error->integrity_code(), true);
 			return $this->error('CAPACITY_INTEGRITY_UNVERIFIED', 503);
 		} catch (\Throwable) {
-			if ($r) return $this->finish($r, $possible_effect ? 'RECONCILIATION_REQUIRED' : 'FAILED', array(), $possible_effect ? 'EXTERNAL_EFFECT_UNCERTAIN' : 'INSPECTION_FAILED');
+			if ($r) return $this->finish($r, $possible_effect ? 'RECONCILIATION_REQUIRED' : 'FAILED', array(), $possible_effect ? 'EXTERNAL_EFFECT_UNCERTAIN' : 'INSPECTION_FAILED', true);
 			return $this->error('CAPACITY_STORE_FAILED', 503);
 		}
 	}

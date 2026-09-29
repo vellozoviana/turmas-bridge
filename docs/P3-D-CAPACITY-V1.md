@@ -41,6 +41,7 @@ Namespace /wp-json/turmas-bridge/v1:
 | POST | /capacidades | Aplica sob gates; registra ledger |
 | GET | /capacidades/{operation_key} | Lê resultado persistido, não reinspeciona inventário |
 | POST | /capacidades/{operation_key}/reconciliation | Reinspeciona inventário; altera apenas ledger |
+| POST | /capacidades/{operation_key}/retry | Retry explícito somente de FAILED comprovadamente pré-escrita |
 
 POST usa HMAC v2 existente, assinando método, rota, query canônica, timestamp,
 nonce, Idempotency-Key e hash SHA256 do corpo. GET mantém HMAC v1. HTTPS e
@@ -83,7 +84,7 @@ como inconclusivos, sem retry automático. Não reaproveita POST /publicacoes.
 | APPLYING | Tentativa persistida antes do possível efeito | Interrupção exige reconciliação |
 | APPLIED_VERIFIED | Observação integral concorda com o desejado | Replay retorna resultado histórico sem reaplicar |
 | RECONCILIATION_REQUIRED | Drift ou efeito possível não confirmado | Inspeção explícita; NÃO retry cego |
-| FAILED | Falha pré-efeito ou origem local superada | Terminal para entrega normal; investigar |
+| FAILED | Falha pré-efeito ou origem local superada | Replay normal é estável; retry autenticado só para `INSPECTION_FAILED`, antes de qualquer escrita |
 
 Os repositórios validam transições e CAS (estado + revision); não aceitam
 retorno silencioso a PENDING, estado desconhecido ou APPLIED_VERIFIED -> APPLYING.
@@ -92,7 +93,9 @@ inconclusivo ou FAILED; inconclusivo -> APPLYING somente pela reconciliação.
 APPLIED_VERIFIED e FAILED são terminais no workflow EPF.
 
 Bridge: PENDING/bloqueados -> APPLYING, bloqueios, APPLIED_VERIFIED (no-op já
-convergido), RECONCILIATION_REQUIRED ou FAILED; APPLYING -> bloqueios somente
+convergido), RECONCILIATION_REQUIRED ou FAILED; FAILED -> PENDING somente no
+endpoint retry autenticado quando `error_code=INSPECTION_FAILED`; não há retry
+para falha após possível efeito. APPLYING -> bloqueios somente
 quando o adapter atesta zero escrita, verificado ou inconclusivo. Inconclusivo
 só permanece inconclusivo ou chega a verificado mediante reconciliação.
 Replay normal de APPLIED_VERIFIED/FAILED não executa adapter. Reconciliação
@@ -116,9 +119,16 @@ PENDING inserido pelo código, timestamps UTC obrigatórios. Observações antes
 depois podem ser NULL até verificadas. Comando/motivo imutáveis, histórico de
 transições acumulado e CAS em toda atualização; histórico inválido falha fechado.
 
-EPF usa o mesmo named lock tepf_capacity_{turma_id} tanto na edição de
-Vagas quanto na entrega/materialização. A entrega bloqueia IDs em ordem
-numérica estável, relê a seleção sob as travas e libera em ordem inversa.
+EPF usa primeiro um named lock por identidade lógica da Publicação
+(`ano_letivo + formacao_id`) tanto na preparação/alteração da seleção quanto
+na entrega/materialização. Ambos adquirem depois os named locks
+`tepf_capacity_{turma_id}` em ordem numérica estável; prepare bloqueia a união
+das Turmas previamente selecionadas e propostas, enquanto delivery relê a
+seleção e bloqueia as selecionadas. Ambos liberam em ordem inversa e sempre em
+`finally`. A edição de Vagas toma somente o lock de Turma e não espera pelo lock
+de Publicação, evitando ciclo de deadlock. Falha na aquisição falha fechado
+antes da transação ou do transporte remoto. Delivery relê identidade e seleção
+sob as travas.
 Na edição, targets() é consultado depois do CAS, dentro da transação local;
 assim uma materialização concorrente não pode tornar a Turma elegível entre
 a descoberta de destinos e o commit. CAS continua sendo a última defesa de
@@ -156,15 +166,21 @@ de Entry. Isso não prova a contagem única do conjunto lógico.
 Por isso a fonte de verdade do Bridge é uma leitura SQL síncrona/fresca baseada
 na consulta GP Inventory gerada separadamente para cada representação
 persistida: mantém os query hooks do vendor (incluindo status de Entry,
-exclusão de partial entries e escopo Advanced Resource), mas troca apenas a
-projeção/agregação para obter entry_id + class_choice; a união é deduplicada
-por Entry ID entre todas as representações esperadas e conta apenas o
-choice_value exato da class_key. A cache de choice counts é limpa, mas não
-é usada como resultado. Resultado inválido, erro SQL, runtime sem os métodos
+exclusão de partial entries e escopo Advanced Resource), mas substitui a
+projeção por `entry_id`, `class_choice`, `SUM(quantity)` e uma contagem de
+quantidades malformadas. O agregado do vendor usa a semântica do GP Inventory
+1.0.29: soma as quantidades associadas à escolha e considera 1 quando não
+existe campo de quantidade. O Bridge une as linhas por Entry ID entre as
+representações do mesmo Resource, contabilizando a quantidade daquela Entry
+uma única vez; quantidades divergentes para a mesma Entry entre representações
+e quantidades inválidas falham fechado. Só conta `choice_value` exato da
+`class_key`. A cache de choice counts é limpa, mas não é usada como resultado.
+Resultado inválido, erro SQL, runtime sem os métodos
 esperados ou referência estrutural divergente nunca vira zero e nunca pode
 produzir APPLIED_VERIFIED. Essa consulta é uma integração com internals
-1.0.29, não uma API pública suportada; uma atualização do plugin exige nova
-inspeção de código e teste.
+1.0.29, não uma API pública suportada. Um guard permite somente a versão
+vendor `1.0.29`; runtime ausente ou outra versão é incompatível/fail-closed e
+exige nova inspeção, atualização da allowlist e testes antes de uso.
 
 GFAPI::update_form precisa confirmar true. update_post_meta pode retornar
 false para valor já existente; sua releitura precisa ser igual ao desejado.
@@ -187,7 +203,10 @@ para futuras materializações. Não faz backfill: mappings legados sem conjunto
 esperado falham fechado e precisam de reconciliação/repreparação explicitamente
 aprovada. Repetição é idempotente; a versão só avança após validar colunas e
 definição (tipo/comprimento/unsigned, nullability, default, extra),
-índices/ordem/uniqueness e engine InnoDB do ledger. Falha mantém versão antiga.
+índices/ordem/uniqueness e engine InnoDB do ledger. Índices extras não únicos
+de lookup são tolerados; índices únicos inesperados podem rejeitar gravações e
+falham fechado. Todos os índices requeridos precisam continuar presentes com
+unicidade e colunas esperadas. Falha mantém versão antiga.
 
 Testes de schema usam doubles de wpdb/dbDelta, inspecionam DDL, defaults,
 nullability, índices, upgrade repetido, ausência de DML/ALTER legado na etapa

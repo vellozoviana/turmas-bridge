@@ -82,6 +82,22 @@ final class CapacityServiceTest extends TestCase {
 	public function test_inspection_failure_before_any_effect_is_failed(): void {
 		$g = new CapacityFakeGateway(); $g->on_read = static function (): void { throw new \RuntimeException(); }; $r = (new Capacity_Service(new CapacityMemoryStore(), $g))->execute(self::command()); self::assertSame('FAILED', $r['state']); self::assertSame(0, $g->writes); self::assertFalse($g->locked);
 	}
+	public function test_prewrite_failed_replay_is_stable_and_explicit_retry_recovers_after_restart(): void {
+		$g = new CapacityFakeGateway(); $g->on_read = static function (): void { throw new \RuntimeException('pre-write inspection outage'); };
+		$store = new CapacityMemoryStore(); $service = new Capacity_Service($store, $g);
+		$failed = $service->execute(self::command()); self::assertSame('FAILED', $failed['state']); self::assertSame('INSPECTION_FAILED', $failed['error_code']); self::assertSame(0, $g->writes);
+		$replay = (new Capacity_Service($store, $g))->execute(self::command()); self::assertSame('FAILED', $replay['state']); self::assertSame(1, $g->reads); self::assertSame(0, $g->writes);
+		$retried = (new Capacity_Service($store, $g))->execute(self::command(), false, true);
+		self::assertSame('APPLIED_VERIFIED', $retried['state']); self::assertSame(1, $g->writes); self::assertSame(2, $retried['attempts']);
+	}
+	public function test_retry_route_semantics_reject_possible_effect_and_verified_replay_is_terminal(): void {
+		$g = new CapacityFakeGateway(); $g->throw_after_write = true; $store = new CapacityMemoryStore(); $service = new Capacity_Service($store, $g);
+		self::assertSame('RECONCILIATION_REQUIRED', $service->execute(self::command())['state']);
+		self::assertSame('CAPACITY_RETRY_NOT_SAFE', $service->execute(self::command(), false, true)->get_error_code()); self::assertSame(1, $g->writes);
+		$g = new CapacityFakeGateway(); $store = new CapacityMemoryStore(); $service = new Capacity_Service($store, $g);
+		$applied = $service->execute(self::command()); $replay = $service->execute(self::command(), false, true);
+		self::assertSame('APPLIED_VERIFIED', $replay['state']); self::assertTrue($replay['idempotent_replay']); self::assertSame($applied['attempts'], $replay['attempts']); self::assertSame(1, $g->writes);
+	}
 }
 
 final class CapacityMemoryStore implements Capacity_Store {

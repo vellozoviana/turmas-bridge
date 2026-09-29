@@ -42,7 +42,13 @@ final class CapacitySchemaTest extends TestCase {
 		$GLOBALS['wpdb']->failure = $failure;
 		Schema::install(); self::assertSame('0.8.0', get_option(Schema::OPTION_NAME));
 	}
-	public static function failures(): array { return array(array('engine'), array('missing-column'), array('wrong-type'), array('wrong-nullability'), array('wrong-index-columns'), array('missing-unique'), array('error')); }
+	public static function failures(): array { return array(array('engine'), array('missing-column'), array('wrong-type'), array('wrong-nullability'), array('wrong-index-columns'), array('missing-unique'), array('unexpected-unique-index'), array('error')); }
+	public function test_benign_additional_index_does_not_block_schema_readiness(): void {
+		$GLOBALS['turmas_bridge_test_options'][Schema::OPTION_NAME] = '0.8.0';
+		$GLOBALS['wpdb']->failure = 'extra-index';
+		Schema::install();
+		self::assertSame('0.9.0', get_option(Schema::OPTION_NAME));
+	}
 }
 final class CapacitySchemaDatabase extends \wpdb {
 	public string $failure = '';
@@ -69,6 +75,8 @@ final class CapacitySchemaDatabase extends \wpdb {
 		}
 		if (str_contains($sql, 'information_schema.STATISTICS')) {
 			$indexes = array('PRIMARY'=>array(true,array('id')),'operation_key'=>array(true,array('operation_key')),'class_version'=>array(true,array('class_key','source_row_version')),'publication_key'=>array(false,array('publication_key')));
+			if ($this->failure === 'extra-index') $indexes['benign_lookup'] = array(false, array('updated_at'));
+			if ($this->failure === 'unexpected-unique-index') $indexes['unexpected_unique'] = array(true, array('payload_hash'));
 			if ($this->failure === 'wrong-index-columns') $indexes['class_version'][1] = array('source_row_version','class_key');
 			if ($this->failure === 'missing-unique') $indexes['operation_key'][0] = false;
 			$rows = array();

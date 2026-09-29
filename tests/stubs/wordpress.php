@@ -69,6 +69,7 @@ class wpdb {
 	public function get_results(string $query, string $output = ''): array {
 		if (isset($GLOBALS['capacity_test_entry_rows_by_field'])) {
 			preg_match("/em\\.meta_key\\s*=\\s*'?(\\d+)'?/", $query, $match);
+			if (str_contains($query, 'em.meta_key')) $GLOBALS['capacity_test_entry_queries'][] = $query;
 			return $GLOBALS['capacity_test_entry_rows_by_field'][(string) ($match[1] ?? '')] ?? array();
 		}
 		return array();

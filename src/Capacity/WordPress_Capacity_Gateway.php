@@ -33,9 +33,10 @@ final class WordPress_Capacity_Gateway implements Capacity_Gateway {
 	public function inspect(array $c): array {
 		try { [$form, $resource, $plan] = $this->context($c); }
 		catch (Capacity_Integrity_Exception $error) { throw $error; }
-		catch (\Throwable $error) { throw new Capacity_Integrity_Exception('The materialized capacity identity could not be verified.', 0, $error); }
+		catch (\Throwable $error) { throw new Capacity_Integrity_Exception('The materialized capacity identity could not be verified.', 'CAPACITY_IDENTITY_UNVERIFIED', $error); }
 		if (! empty($form['is_active'])) return array('form_active' => true, 'healthy' => false, 'resource_id' => $resource);
-		$state = $this->operations->inspect($plan, $resource);
+		try { $state = $this->operations->inspect($plan, $resource); }
+		catch (\TurmasBridge\Inventory\Inventory_Integration_Exception $error) { throw new Capacity_Integrity_Exception('The GP Inventory compatibility boundary could not verify consumption.', $error->error_code(), $error); }
 		if (function_exists('wp_cache_delete')) wp_cache_delete($resource, 'post_meta');
 		$meta = get_post_meta($resource, 'gpi_inventory_limit', true);
 		$limit = filter_var($meta, FILTER_VALIDATE_INT, array('options' => array('min_range' => 1)));
@@ -74,7 +75,10 @@ final class WordPress_Capacity_Gateway implements Capacity_Gateway {
 	}
 	/** @return array{0:array,1:int,2:Resource_Plan} */
 	private function context(array $c): array {
-		if (! $this->operations->is_available()) throw new \RuntimeException('Inventory runtime unavailable.');
+		if (! $this->operations->is_available()) {
+			$code = $this->operations instanceof WordPress_GP_Inventory_Operations ? ($this->operations->availability_error_code() ?? 'GP_INVENTORY_RUNTIME_INCOMPATIBLE') : 'GP_INVENTORY_RUNTIME_UNAVAILABLE';
+			throw new Capacity_Integrity_Exception('Inventory runtime unavailable or unvalidated.', $code);
+		}
 		$identity = Resource_Identity::from_class_key($c['class_key']);
 		$m = $this->mappings->find($identity); $p = $this->publications->find($c['publication_key']);
 		if (! $m || ! $p || ($m['status'] ?? '') !== 'HEALTHY' || ($p['status'] ?? '') !== 'MATERIALIZED' || ($m['publication_key'] ?? '') !== $c['publication_key'] || (int) $m['form_id'] !== $c['expected_form_id'] || (int) $p['form_id'] !== $c['expected_form_id'] || ! $this->operations->resource_exists((int) $m['resource_id'])) throw new \RuntimeException('Existing identity unavailable.');

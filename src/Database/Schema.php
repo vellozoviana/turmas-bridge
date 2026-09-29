@@ -164,8 +164,10 @@ final class Schema {
 			$actual[$name]['unique'] = (int) $row['NON_UNIQUE'] === 0;
 			$actual[$name]['columns'][(int) $row['SEQ_IN_INDEX']] = (string) $row['COLUMN_NAME'];
 		}
-		$actual_names = array_keys($actual); $expected_names = array_keys($expected); sort($actual_names, SORT_STRING); sort($expected_names, SORT_STRING);
-		if ($actual_names !== $expected_names) return false;
+		// Extra non-unique lookup indexes are benign; unknown uniqueness constraints may reject valid writes.
+		foreach ($actual as $name => $index) {
+			if (! isset($expected[$name]) && $index['unique']) return false;
+		}
 		foreach ($expected as $name => [$unique, $columns]) {
 			if (! isset($actual[$name]) || $actual[$name]['unique'] !== $unique) return false;
 			ksort($actual[$name]['columns']);

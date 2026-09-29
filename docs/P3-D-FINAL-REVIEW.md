@@ -25,6 +25,18 @@ Foram corrigidas também três lacunas concretas na revisão:
   sucesso HTTP enganoso. Mudanças atingem os helpers compartilhados de
   inventário/materialização do Bridge e foram submetidas à regressão completa.
 
+Correções após a revisão adversarial adicional:
+- consumo preserva quantity > 1 conforme GP Inventory 1.0.29 e deduplica pelo
+  Entry ID entre representações; linhas/quantidades malformadas ou divergentes
+  falham fechado;
+- allowlist explícita do adapter limitada ao GP Inventory 1.0.29;
+- transações EPF revertem diante de qualquer Throwable;
+- prepare/delivery EPF compartilham lock lógico de Publicação antes dos locks
+  ordenados de Turma;
+- retry Bridge autenticado somente para FAILED/INSPECTION_FAILED pré-escrita;
+- hooks sempre recebem cleanup, índices extras benignos são aceitos e testes
+  cobrem falha de integridade de linhas do vendor.
+
 ## F. Schema
 
 EPF plugin 0.13.4 -> 0.14.0; schema 0.7.0 -> 0.8.0.
@@ -39,6 +51,7 @@ MySQL real e restart serão verificados somente no futuro gate autorizado.
 POST /turmas-bridge/v1/capacidades
 GET /turmas-bridge/v1/capacidades/{operation_key}
 POST /turmas-bridge/v1/capacidades/{operation_key}/reconciliation
+POST /turmas-bridge/v1/capacidades/{operation_key}/retry (FAILED pré-escrita somente)
 
 HMAC v2 nos POSTs, v1 no GET, sem downgrade. Idempotency-Key vinculado à
 assinatura. Vetor de contrato idêntico e fictício em ambos os repositórios.
@@ -61,9 +74,7 @@ Reconciliação não cria/repara Form, Resource, binding ou Entry.
 
 | Gate | EPF | Bridge |
 | --- | --- | --- |
-| PHPUnit completo | 290 / 1318 assertions | 287 / 1216 assertions |
-| Filtro Capacity/Inventory/TurmaWorkflow/PublicationDelivery (subconjunto) | 70 / 298 | 99 / 391 |
-| CapacitySchemaTest (subconjunto, não somar) | 5 / 20 | 8 / 25 |
+| PHPUnit completo | 296 / 1348 assertions | 306 / 1268 assertions |
 | lint | PASS | PASS |
 | PHPStan | PASS | PASS |
 | diff-check | PASS | PASS |
