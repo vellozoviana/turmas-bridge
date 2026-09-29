@@ -28,6 +28,15 @@ final class CapacityServiceTest extends TestCase {
 	public function test_below_consumed_blocks_before_write(): void {
 		$g = new CapacityFakeGateway(); $g->consumed = 6; $r = (new Capacity_Service(new CapacityMemoryStore(), $g))->execute(self::command()); self::assertSame('BLOCKED_BELOW_CONSUMED', $r['state']); self::assertSame(0, $g->writes); self::assertFalse($g->locked);
 	}
+	public function test_aggregated_shared_resource_consumption_blocks_two_and_allows_three(): void {
+		// The authoritative gateway supplies the union of Entry IDs across CRES fields.
+		$blocked_gateway = new CapacityFakeGateway(); $blocked_gateway->consumed = 3;
+		$blocked = (new Capacity_Service(new CapacityMemoryStore(), $blocked_gateway))->execute(self::command(2));
+		self::assertSame('BLOCKED_BELOW_CONSUMED', $blocked['state']); self::assertSame(0, $blocked_gateway->writes);
+		$allowed_gateway = new CapacityFakeGateway(); $allowed_gateway->consumed = 3;
+		$allowed = (new Capacity_Service(new CapacityMemoryStore(), $allowed_gateway))->execute(self::command(3));
+		self::assertSame('APPLIED_VERIFIED', $allowed['state']); self::assertSame(1, $allowed_gateway->writes);
+	}
 	/** @dataProvider divergences */
 	public function test_post_write_divergence_never_returns_success(string $kind): void {
 		$g = new CapacityFakeGateway(); $g->divergence = $kind; $s = new CapacityMemoryStore(); $service = new Capacity_Service($s, $g);

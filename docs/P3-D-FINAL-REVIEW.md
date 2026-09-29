@@ -61,9 +61,9 @@ Reconciliação não cria/repara Form, Resource, binding ou Entry.
 
 | Gate | EPF | Bridge |
 | --- | --- | --- |
-| PHPUnit completo | 288 / 1310 assertions | 277 / 1188 assertions |
-| Filtro Capacity (inclui testes anteriores relacionados) | 41 / 128 | 57 / 257 |
-| CapacitySchemaTest (subconjunto, não somar) | 5 / 20 | 5 / 20 |
+| PHPUnit completo | 290 / 1318 assertions | 287 / 1216 assertions |
+| Filtro Capacity/Inventory/TurmaWorkflow/PublicationDelivery (subconjunto) | 70 / 298 | 99 / 391 |
+| CapacitySchemaTest (subconjunto, não somar) | 5 / 20 | 8 / 25 |
 | lint | PASS | PASS |
 | PHPStan | PASS | PASS |
 | diff-check | PASS | PASS |
@@ -113,9 +113,11 @@ Sem transação distribuída ou garantia de capacidade online atômica.
 Snapshot já aplicado é histórico, não uma leitura instantânea.
 Timeout sem reserva remota, corrupção de inventário, conflito de origem ou
 drift irreparável exigem decisão humana; não existe retry/reparo automático.
-Uma mudança manual conjunta de fields/bindings não é coberta como adulteração
-detectável em todos os casos. Migração física e compatibilidade runtime final
-não foram executadas, em respeito ao hard stop.
+O conjunto esperado de representações é persistido no mapping Bridge e a
+integridade atual do Form/bindings é comparada a esse conjunto. Uma adulteração
+manual que também altere o mapping está fora do protocolo suportado. Migração
+física e compatibilidade runtime final não foram executadas, em respeito ao
+hard stop.
 
 ## T. Próximo gate humano
 

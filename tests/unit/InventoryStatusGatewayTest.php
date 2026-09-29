@@ -68,7 +68,7 @@ final class Status_Mapping_Store implements Inventory_Mapping_Store {
 	public function reserve(Resource_Identity $identity, int $form_id): bool { $this->mutations++; return false; }
 	public function discard_provisioning(Resource_Identity $identity): bool { $this->mutations++; return false; }
 	public function resource_created(Resource_Identity $identity, int $resource_id, int $form_id): bool { $this->mutations++; return false; }
-	public function healthy(Resource_Identity $identity, int $form_id): bool { $this->mutations++; return false; }
+	public function healthy(Resource_Identity $identity, int $form_id, \TurmasBridge\Inventory\Resource_Plan $expected_plan): bool { $this->mutations++; return false; }
 	public function reconciliation_required(Resource_Identity $identity, string $error_code): bool { $this->mutations++; return false; }
 	public function acquire_lock(Resource_Identity $identity): bool { $this->mutations++; return false; }
 	public function release_lock(Resource_Identity $identity): void { $this->mutations++; }

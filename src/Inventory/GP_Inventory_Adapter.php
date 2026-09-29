@@ -50,7 +50,7 @@ final class GP_Inventory_Adapter implements Inventory_Gateway {
 				throw new Inventory_Integration_Exception('turmas_bridge_inventory_reconciliation_required', 'O Resource possui drift semântico e exige reconciliação manual.');
 			}
 			if (! $created && $observed['healthy'] && $observed['capacity'] === $plan->capacity()) {
-				if (! $this->mappings->healthy($identity, $plan->form_id())) throw new Inventory_Integration_Exception('turmas_bridge_inventory_mapping_persist_failed', 'O Resource está saudável, mas o mapeamento requer reconciliação.');
+				if (! $this->mappings->healthy($identity, $plan->form_id(), $plan)) throw new Inventory_Integration_Exception('turmas_bridge_inventory_mapping_persist_failed', 'O Resource está saudável, mas o mapeamento requer reconciliação.');
 				return new Inventory_Resource($identity, $observed['capacity'], $observed['consumed'], $plan->representations(), $resource_id);
 			}
 			$state = $this->operations->synchronize($plan, $resource_id);
@@ -62,7 +62,7 @@ final class GP_Inventory_Adapter implements Inventory_Gateway {
 				$this->mappings->reconciliation_required($identity, 'turmas_bridge_capacity_below_consumed_after_sync');
 				throw new Inventory_Integration_Exception('turmas_bridge_capacity_below_consumed', 'O consumo mudou durante a sincronização; a redução foi bloqueada.');
 			}
-			if (! $this->mappings->healthy($identity, $plan->form_id())) throw new Inventory_Integration_Exception('turmas_bridge_inventory_mapping_persist_failed', 'O Resource foi sincronizado e requer reconciliação de mapeamento.');
+			if (! $this->mappings->healthy($identity, $plan->form_id(), $plan)) throw new Inventory_Integration_Exception('turmas_bridge_inventory_mapping_persist_failed', 'O Resource foi sincronizado e requer reconciliação de mapeamento.');
 			return new Inventory_Resource($identity, $state['capacity'], $state['consumed'], $plan->representations(), $resource_id);
 		} catch (Inventory_Integration_Exception $error) {
 			if ($error->error_code() !== 'turmas_bridge_capacity_below_consumed') $this->mappings->reconciliation_required($identity, $error->error_code());

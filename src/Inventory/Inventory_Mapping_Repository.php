@@ -28,9 +28,10 @@ final class Inventory_Mapping_Repository implements Inventory_Mapping_Store {
 	public function resource_created(Resource_Identity $identity, int $resource_id, int $form_id): bool {
 		return $this->update($identity, array('resource_id' => $resource_id, 'form_id' => $form_id, 'status' => 'PROVISIONING', 'last_error_code' => null));
 	}
-	public function healthy(Resource_Identity $identity, int $form_id): bool {
+	public function healthy(Resource_Identity $identity, int $form_id, Resource_Plan $expected_plan): bool {
 		$time = current_time('mysql', true);
-		return $this->update($identity, array('form_id' => $form_id, 'status' => 'HEALTHY', 'last_error_code' => null, 'last_reconciled_at' => $time));
+		$representations = array_map(static fn (Resource_Representation $representation): array => $representation->to_array(), $expected_plan->representations());
+		return $this->update($identity, array('form_id' => $form_id, 'status' => 'HEALTHY', 'expected_representations_json' => wp_json_encode($representations), 'last_error_code' => null, 'last_reconciled_at' => $time));
 	}
 	public function reconciliation_required(Resource_Identity $identity, string $error_code): bool { return $this->update($identity, array('status' => 'RECONCILIATION_REQUIRED', 'last_error_code' => $error_code)); }
 	public function acquire_lock(Resource_Identity $identity): bool { return (int) $this->wpdb->get_var($this->wpdb->prepare('SELECT GET_LOCK(%s, 10)', $this->lock_name($identity))) === 1; }

@@ -15,15 +15,18 @@ final class CapacityGatewayTest extends TestCase {
 	private WordPress_Capacity_Gateway $gateway;
 	protected function setUp(): void {
 		require_once __DIR__ . '/../stubs/gravityforms.php';
+		$GLOBALS['wpdb'] = new \wpdb();
 		\GFAPI::reset();
 		\GFAPI::$update_result = true;
 		\GFAPI::$form = array('id' => 800, 'is_active' => false, 'fields' => array());
-		foreach (array(1, 2, 3) as $id) \GFAPI::$form['fields'][] = (object) array('id' => $id, 'type' => 'select', 'adminLabel' => sprintf('turma_cre_%02d', $id), 'gpiResource' => '801', 'choices' => array(array('value' => '2095:UNIT:01.01', 'inventory_limit' => 8)));
+		foreach (array(1, 2, 3) as $id) \GFAPI::$form['fields'][] = (object) array('id' => $id, 'type' => 'select', 'adminLabel' => sprintf('turma_cre_%02d', $id), 'gpiInventory' => 'advanced', 'gpiResource' => '801', 'choices' => array(array('value' => '2095:UNIT:01.01', 'inventory_limit' => 8)));
 		$GLOBALS['capacity_test_meta'] = array(801 => array('gpi_inventory_limit' => '8', 'gpi_field' => array('800_1', '800_2', '800_3')));
 		$GLOBALS['capacity_test_meta'][801] += array('turmas_bridge_managed' => '1', 'turmas_bridge_class_key' => '2095:UNIT:01.01');
 		$GLOBALS['capacity_test_writes'] = array();
 		$this->m = $this->createMock(Inventory_Mapping_Store::class);
-		$this->m->method('find')->willReturn(array('publication_key' => '2095:UNIT', 'status' => 'HEALTHY', 'form_id' => 800, 'resource_id' => 801));
+		$expected = array();
+		foreach (array(1, 2, 3) as $id) $expected[] = array('cre' => sprintf('%02d', $id), 'field_id' => (string) $id, 'choice_value' => '2095:UNIT:01.01');
+		$this->m->method('find')->willReturn(array('publication_key' => '2095:UNIT', 'status' => 'HEALTHY', 'form_id' => 800, 'resource_id' => 801, 'expected_representations_json' => wp_json_encode($expected)));
 		foreach (array('reserve', 'resource_created', 'healthy', 'reconciliation_required', 'discard_provisioning') as $method) $this->m->expects(self::never())->method($method);
 		$this->p = $this->createMock(Materialization_Store::class);
 		$this->p->method('find')->willReturn(array('status' => 'MATERIALIZED', 'form_id' => 800));
@@ -38,7 +41,7 @@ final class CapacityGatewayTest extends TestCase {
 		$this->ops->expects(self::never())->method('create_resource');
 		$this->gateway = new WordPress_Capacity_Gateway($this->m, $this->p, $this->ops);
 	}
-	protected function tearDown(): void { \GFAPI::reset(); unset($GLOBALS['capacity_test_meta'], $GLOBALS['capacity_test_writes'], $GLOBALS['capacity_test_meta_fail'], $GLOBALS['capacity_test_counter'], $GLOBALS['capacity_test_form_write_hook'], $GLOBALS['capacity_test_meta_write_hook'], $GLOBALS['capacity_test_consumed']); }
+	protected function tearDown(): void { \GFAPI::reset(); unset($GLOBALS['capacity_test_meta'], $GLOBALS['capacity_test_writes'], $GLOBALS['capacity_test_meta_fail'], $GLOBALS['capacity_test_counter'], $GLOBALS['capacity_test_entry_rows_by_field'], $GLOBALS['capacity_test_form_write_hook'], $GLOBALS['capacity_test_meta_write_hook'], $GLOBALS['capacity_test_consumed']); }
 	public function test_active_blocks_actual_gateway_without_form_meta_or_mapping_writes(): void {
 		\GFAPI::$form['is_active'] = true; $before = $GLOBALS['capacity_test_meta'];
 		self::assertSame('FORM_ACTIVE', $this->gateway->write(CapacityServiceTest::command()));
@@ -85,28 +88,73 @@ final class CapacityGatewayTest extends TestCase {
 		try { $this->gateway->write(CapacityServiceTest::command()); self::fail('Expected ownership check.'); } catch (\RuntimeException) {}
 		self::assertSame(array(), \GFAPI::$updated_forms); self::assertSame(array(), $GLOBALS['capacity_test_writes']);
 	}
-	public function test_vendor_count_is_flushed_on_each_inspection_and_invalid_count_fails_closed(): void {
+	public function test_fresh_consumption_aggregates_all_representations_and_deduplicates_entries(): void {
 		foreach (\GFAPI::$form['fields'] as $f) $f->gpiInventory = 'advanced';
 		$counter = new class {
-			public int $flushes = 0; public mixed $count = 2;
+			public int $flushes = 0; public array $fields = array();
 			public function flush_choice_count_cache(array $form): void { $this->flushes++; }
-			public function get_choice_count(mixed ...$args): mixed { return $this->count; }
+			public function add_query_hooks(mixed $field): void { $this->fields[] = (string) $field->id; }
+			public function remove_query_hooks(): void {}
+			public function get_claimed_inventory_query(mixed $field): array { return array('select' => 'SELECT quantity', 'from' => 'FROM wp_gf_entry_meta em', 'join' => 'INNER JOIN wp_gf_entry e ON e.id=em.entry_id', 'where' => "WHERE em.meta_key = '" . $field->id . "' AND e.status IN ('active','archived')"); }
 		};
 		$GLOBALS['capacity_test_counter'] = $counter;
+		$GLOBALS['capacity_test_entry_rows_by_field'] = array(
+			'1' => array(array('entry_id' => '30', 'class_choice' => '2095:UNIT:01.01')),
+			'2' => array(array('entry_id' => '31', 'class_choice' => '2095:UNIT:01.01'), array('entry_id' => '32', 'class_choice' => '2095:UNIT:01.01'), array('entry_id' => '30', 'class_choice' => '2095:UNIT:01.01')),
+			'3' => array(),
+		);
 		$gateway = new WordPress_Capacity_Gateway($this->m, $this->p, new \TurmasBridge\Inventory\WordPress_GP_Inventory_Operations());
-		self::assertSame(2, $gateway->inspect(CapacityServiceTest::command())['consumed']);
-		$counter->count = 3; self::assertSame(3, $gateway->inspect(CapacityServiceTest::command())['consumed']); self::assertSame(2, $counter->flushes);
-		$counter->count = null;
-		$this->expectException(\TurmasBridge\Inventory\Inventory_Integration_Exception::class); $gateway->inspect(CapacityServiceTest::command());
+		self::assertSame(3, $gateway->inspect(CapacityServiceTest::command())['consumed'], 'CRES A=1 and CRES B=2 produce three Entries even when Entry 30 is represented twice.');
+		self::assertSame(array('1', '2', '3'), $counter->fields);
+		self::assertSame(1, $counter->flushes);
+	}
+	public function test_fresh_consumption_invalid_entry_identity_fails_closed(): void {
+		foreach (\GFAPI::$form['fields'] as $f) $f->gpiInventory = 'advanced';
+		$counter = new class {
+			public function flush_choice_count_cache(array $form): void {}
+			public function add_query_hooks(mixed $field): void {}
+			public function remove_query_hooks(): void {}
+			public function get_claimed_inventory_query(mixed $field): array { return array('select' => 'SELECT quantity', 'from' => 'FROM wp_gf_entry_meta em', 'join' => 'INNER JOIN wp_gf_entry e ON e.id=em.entry_id', 'where' => "WHERE em.meta_key = '" . $field->id . "'"); }
+		};
+		$GLOBALS['capacity_test_counter'] = $counter; $GLOBALS['capacity_test_entry_rows_by_field'] = array('1' => array(array('entry_id' => '0', 'class_choice' => '2095:UNIT:01.01')));
+		$this->expectException(\TurmasBridge\Inventory\Inventory_Integration_Exception::class);
+		(new WordPress_Capacity_Gateway($this->m, $this->p, new \TurmasBridge\Inventory\WordPress_GP_Inventory_Operations()))->inspect(CapacityServiceTest::command());
 	}
 	public function test_missing_binding_or_divergent_choice_is_not_verified(): void {
 		array_pop($GLOBALS['capacity_test_meta'][801]['gpi_field']); self::assertFalse($this->gateway->inspect(CapacityServiceTest::command())['healthy']);
 		$GLOBALS['capacity_test_meta'][801]['gpi_field'][] = '800_3'; \GFAPI::$form['fields'][2]->choices[0]['inventory_limit'] = 9;
 		self::assertFalse($this->gateway->inspect(CapacityServiceTest::command())['healthy']);
 	}
+	public function test_expected_representation_set_is_persisted_and_compared_to_form(): void {
+		// The mapping mock is the durable post-restart source; the Form is only observed state.
+		self::assertTrue($this->gateway->inspect(CapacityServiceTest::command())['healthy']);
+		array_pop(\GFAPI::$form['fields']);
+		$this->expectException(\RuntimeException::class);
+		$this->gateway->inspect(CapacityServiceTest::command());
+	}
+	public function test_missing_persisted_representation_enters_reconciliation_not_applied(): void {
+		array_pop(\GFAPI::$form['fields']);
+		$this->p->method('acquire_choice_lock')->willReturn(true); $this->m->method('acquire_lock')->willReturn(true);
+		$store = new CapacityMemoryStore();
+		$result = (new \TurmasBridge\Capacity\Capacity_Service($store, $this->gateway))->execute(CapacityServiceTest::command());
+		self::assertSame('RECONCILIATION_REQUIRED', $result['state']);
+		self::assertSame(array(), $GLOBALS['capacity_test_writes']);
+	}
+	public function test_unexpected_same_class_representation_requires_reconciliation(): void {
+		\GFAPI::$form['fields'][] = (object) array('id' => 4, 'type' => 'select', 'adminLabel' => 'turma_cre_04', 'gpiResource' => '801', 'choices' => array(array('value' => '2095:UNIT:01.01', 'inventory_limit' => 8)));
+		$GLOBALS['capacity_test_meta'][801]['gpi_field'][] = '800_4';
+		$this->expectException(\RuntimeException::class);
+		$this->gateway->inspect(CapacityServiceTest::command());
+	}
+	public function test_expected_representation_with_wrong_binding_requires_reconciliation(): void {
+		\GFAPI::$form['fields'][1]->gpiResource = '999';
+		$this->expectException(\RuntimeException::class);
+		$this->gateway->inspect(CapacityServiceTest::command());
+	}
 	/** @dataProvider partial_failures */
 	public function test_partial_effects_through_actual_adapter_require_reconciliation(string $fault): void {
 		$this->p->method('acquire_choice_lock')->willReturn(true); $this->m->method('acquire_lock')->willReturn(true);
+		$GLOBALS['capacity_test_counter'] = new CapacityGatewayChoiceQueryFake();
 		$GLOBALS['capacity_test_form_write_hook'] = static function () use ($fault): void {
 			if ($fault === 'choice') \GFAPI::$form['fields'][2]->choices[0]['inventory_limit'] = 9;
 			if ($fault === 'binding') array_pop($GLOBALS['capacity_test_meta'][801]['gpi_field']);
@@ -136,4 +184,10 @@ final class CapacityGatewayTest extends TestCase {
 		$s = new CapacityMemoryStore(); $r = (new \TurmasBridge\Capacity\Capacity_Service($s, $this->gateway))->execute(CapacityServiceTest::command());
 		self::assertSame('CAPACITY_UNLOCK_UNCONFIRMED', $r->get_error_code()); self::assertSame('APPLIED_VERIFIED', array_values($s->rows)[0]['state']);
 	}
+}
+final class CapacityGatewayChoiceQueryFake {
+	public function flush_choice_count_cache(array $form): void {}
+	public function add_query_hooks(mixed $field): void {}
+	public function remove_query_hooks(): void {}
+	public function get_claimed_inventory_query(mixed $field): array { return array('select' => 'SELECT quantity', 'from' => 'FROM wp_gf_entry_meta em', 'join' => 'INNER JOIN wp_gf_entry e ON e.id=em.entry_id', 'where' => "WHERE em.meta_key = '" . $field->id . "'"); }
 }

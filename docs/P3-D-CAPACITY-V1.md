@@ -116,7 +116,13 @@ PENDING inserido pelo código, timestamps UTC obrigatórios. Observações antes
 depois podem ser NULL até verificadas. Comando/motivo imutáveis, histórico de
 transições acumulado e CAS em toda atualização; histórico inválido falha fechado.
 
-EPF serializa entregas por turma_id e revalida origem antes do HTTP.
+EPF usa o mesmo named lock tepf_capacity_{turma_id} tanto na edição de
+Vagas quanto na entrega/materialização. A entrega bloqueia IDs em ordem
+numérica estável, relê a seleção sob as travas e libera em ordem inversa.
+Na edição, targets() é consultado depois do CAS, dentro da transação local;
+assim uma materialização concorrente não pode tornar a Turma elegível entre
+a descoberta de destinos e o commit. CAS continua sendo a última defesa de
+row_version; mudança de seleção observada antes do envio retorna conflito.
 Bridge usa lock de choices por publicação, depois lock por class_key,
 liberando na ordem inversa em finally. Assim duas classes do mesmo Form
 materializado não sobrescrevem o documento completo cooperativamente.
@@ -125,11 +131,40 @@ inconclusiva no transporte; o ledger preserva o resultado para consulta/
 reconciliação. Lock não substitui unique keys ou CAS.
 
 O adapter exige mapping HEALTHY, materialização MATERIALIZED, Form esperado,
-Resource existente com marcadores Bridge de propriedade da class_key, todas
-as representações select reconhecidas e bindings exatos, sem duplicatas ou
-vínculos adicionais. Reusa a inspeção GP, limpa cache de contagem antes de
-ler consumed e rejeita valores nulos/negativos/inválidos (não converte em zero).
-Relê postmeta após invalidar cache. Revalida Form inativo antes de escrever.
+Resource existente com marcadores Bridge de propriedade da class_key,
+representações select idênticas ao expected_representations_json persistido
+no mapping quando a materialização ficou saudável e bindings exatamente iguais.
+O conjunto esperado não é reconstruído do Form atual: mapping antigo sem essa
+referência, campo/choice ausente, representação adicional ou binding incorreto
+falha fechado para RECONCILIATION_REQUIRED. A referência inclui CRE, field ID
+e choice value; é mantida no banco e sobrevive a restart do processo.
+
+### Fonte de verdade do consumo compartilhado
+
+O pacote fonte GP Inventory 1.0.29 foi lido do ZIP local autorizado, sem
+instalação nem execução WordPress. Em
+gp-inventory/includes/class-inventory-type-advanced.php,
+get_resource_fields() (linha 206) resolve os fields listados em gpi_field;
+resource_and_properties() (linha 323) constrói escopo por Resource sobre
+esses fields. Porém, em
+gp-inventory/includes/class-inventory-type-choices.php,
+get_choice_count() (linha 361) delega a uma consulta do field; o modificador
+modify_query_select_for_choices() (linha 389) usa SUM(...) de meta rows,
+e get_choice_counts() (linha 530) agrega resultados de meta, não IDs únicos
+de Entry. Isso não prova a contagem única do conjunto lógico.
+
+Por isso a fonte de verdade do Bridge é uma leitura SQL síncrona/fresca baseada
+na consulta GP Inventory gerada separadamente para cada representação
+persistida: mantém os query hooks do vendor (incluindo status de Entry,
+exclusão de partial entries e escopo Advanced Resource), mas troca apenas a
+projeção/agregação para obter entry_id + class_choice; a união é deduplicada
+por Entry ID entre todas as representações esperadas e conta apenas o
+choice_value exato da class_key. A cache de choice counts é limpa, mas não
+é usada como resultado. Resultado inválido, erro SQL, runtime sem os métodos
+esperados ou referência estrutural divergente nunca vira zero e nunca pode
+produzir APPLIED_VERIFIED. Essa consulta é uma integração com internals
+1.0.29, não uma API pública suportada; uma atualização do plugin exige nova
+inspeção de código e teste.
 
 GFAPI::update_form precisa confirmar true. update_post_meta pode retornar
 false para valor já existente; sua releitura precisa ser igual ao desejado.
@@ -146,11 +181,13 @@ inventa confirmação nem reenvia automaticamente.
 
 ## Upgrade e evidência de testes
 
-Upgrade EPF 0.7.0 -> 0.8.0 e Bridge 0.8.0 -> 0.9.0 é aditivo, somente
-dbDelta do novo ledger. Não faz backfill ou altera publicação/ativação
-existente. Repetição é idempotente; versão só avança após verificar InnoDB,
-presença das colunas e índices únicos esperados. Instalação limpa conserva
-os instaladores anteriores e adiciona o ledger. Falha mantém versão anterior.
+Upgrade EPF 0.7.0 -> 0.8.0 e Bridge 0.8.0 -> 0.9.0 é aditivo; no Bridge,
+dbDelta também adiciona expected_representations_json à tabela de mapping
+para futuras materializações. Não faz backfill: mappings legados sem conjunto
+esperado falham fechado e precisam de reconciliação/repreparação explicitamente
+aprovada. Repetição é idempotente; a versão só avança após validar colunas e
+definição (tipo/comprimento/unsigned, nullability, default, extra),
+índices/ordem/uniqueness e engine InnoDB do ledger. Falha mantém versão antiga.
 
 Testes de schema usam doubles de wpdb/dbDelta, inspecionam DDL, defaults,
 nullability, índices, upgrade repetido, ausência de DML/ALTER legado na etapa
@@ -169,8 +206,9 @@ fault injection depois de GF/meta, consumo mutável, replay e reconciliação.
   casos; não provam que o Form ficou inativo em todos os instantes.
 - Fresh significa invalidar caches conhecidos do GP/postmeta, não isolamento
   serializável da base nem garantia contra cache/runtime de versão incompatível.
-- Expectativa estrutural vem do mapping e das representações/bindings atuais;
-  alteração manual simultânea de ambos não é autorizada e requer revisão.
+- Expectativa estrutural é persistida no mapping durante a materialização
+  saudável e comparada ao Form/bindings observados. Alteração manual simultânea
+  do Form e do próprio mapping permanece fora do modelo de adulteração.
 - Mudanças de Vagas concorrentes com entrega, ou materialização ainda em voo,
   precisam de disciplina operacional. O lock de entrega não bloqueia edição
   local nem substitui a revalidação; uma intenção mais nova continua pendente.

@@ -66,7 +66,13 @@ class wpdb {
 	public function get_charset_collate(): string { return ''; }
 	public function prepare(string $query, mixed ...$arguments): string { return $query; }
 	public function get_row(string $query, string $output = ''): mixed { return null; }
-	public function get_results(string $query, string $output = ''): array { return array(); }
+	public function get_results(string $query, string $output = ''): array {
+		if (isset($GLOBALS['capacity_test_entry_rows_by_field'])) {
+			preg_match("/em\\.meta_key\\s*=\\s*'?(\\d+)'?/", $query, $match);
+			return $GLOBALS['capacity_test_entry_rows_by_field'][(string) ($match[1] ?? '')] ?? array();
+		}
+		return array();
+	}
 	public function get_col(string $query): array { return array(); }
 	public function get_var(string $query): mixed {
 		if (str_contains($query, 'information_schema.COLUMNS')) return 19;

@@ -55,6 +55,9 @@ final class Capacity_Service {
 			$evidence = array('observation' => $after, 'capacity_after' => $after['capacity'] ?? null, 'consumed_after' => $after['consumed'] ?? null);
 			if (! $this->healthy($after) || ! empty($after['form_active']) || $after['capacity'] !== $c['desired_capacity'] || $after['consumed'] > $c['desired_capacity'] || ($after['resource_id'] ?? null) !== ($before['resource_id'] ?? null) || ($after['bindings'] ?? null) !== ($before['bindings'] ?? null)) return $this->finish($r, 'RECONCILIATION_REQUIRED', $evidence, 'POST_WRITE_DIVERGENCE');
 			return $this->finish($r, 'APPLIED_VERIFIED', $evidence, null);
+		} catch (Capacity_Integrity_Exception) {
+			if ($r) return $this->finish($r, 'RECONCILIATION_REQUIRED', array(), 'INVENTORY_INTEGRITY_UNVERIFIED', true);
+			return $this->error('CAPACITY_INTEGRITY_UNVERIFIED', 503);
 		} catch (\Throwable) {
 			if ($r) return $this->finish($r, $possible_effect ? 'RECONCILIATION_REQUIRED' : 'FAILED', array(), $possible_effect ? 'EXTERNAL_EFFECT_UNCERTAIN' : 'INSPECTION_FAILED');
 			return $this->error('CAPACITY_STORE_FAILED', 503);

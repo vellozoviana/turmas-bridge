@@ -31,7 +31,9 @@ final class WordPress_Capacity_Gateway implements Capacity_Gateway {
 		finally { $this->publications->release_choice_lock($identity->publication_key()); }
 	}
 	public function inspect(array $c): array {
-		[$form, $resource, $plan] = $this->context($c);
+		try { [$form, $resource, $plan] = $this->context($c); }
+		catch (Capacity_Integrity_Exception $error) { throw $error; }
+		catch (\Throwable $error) { throw new Capacity_Integrity_Exception('The materialized capacity identity could not be verified.', 0, $error); }
 		if (! empty($form['is_active'])) return array('form_active' => true, 'healthy' => false, 'resource_id' => $resource);
 		$state = $this->operations->inspect($plan, $resource);
 		if (function_exists('wp_cache_delete')) wp_cache_delete($resource, 'post_meta');
@@ -80,15 +82,31 @@ final class WordPress_Capacity_Gateway implements Capacity_Gateway {
 		if ((string) get_post_meta((int) $m['resource_id'], 'turmas_bridge_managed', true) !== '1' || get_post_meta((int) $m['resource_id'], 'turmas_bridge_class_key', true) !== $c['class_key']) throw new \RuntimeException('Resource ownership unconfirmed.');
 		$form = \GFAPI::get_form($c['expected_form_id']);
 		if (! is_array($form) || ! empty($form['is_trash']) || (int) ($form['id'] ?? 0) !== $c['expected_form_id']) throw new \RuntimeException('Form unavailable.');
-		$reps = array();
+		$expected = json_decode((string) ($m['expected_representations_json'] ?? ''), true);
+		if (! is_array($expected) || $expected === array()) throw new Capacity_Integrity_Exception('Persisted representation reference is unavailable.');
+		$expected_representations = array(); $expected_rows = array();
+		foreach ($expected as $row) {
+			if (! is_array($row) || ! isset($row['cre'], $row['field_id'], $row['choice_value']) || ! is_string($row['cre']) || ! is_string($row['choice_value']) || $row['choice_value'] !== $identity->class_key() || ! is_scalar($row['field_id'])) throw new Capacity_Integrity_Exception('Persisted representation reference is malformed.');
+			$representation = new Resource_Representation($row['cre'], (string) $row['field_id'], $row['choice_value'], $identity);
+			$expected_representations[] = $representation; $expected_rows[] = $representation->to_array();
+		}
+		$expected_plan = new Resource_Plan($identity, $c['desired_capacity'], $expected_representations, $c['expected_form_id']);
+		$observed_rows = array(); $field_map = array();
 		foreach ((array) ($form['fields'] ?? array()) as $field) {
 			$f = is_object($field) ? get_object_vars($field) : $field;
+			$field_map[(string) ($f['id'] ?? '')] = $field;
 			foreach ((array) ($f['choices'] ?? array()) as $choice) {
 				if (($choice['value'] ?? '') !== $c['class_key']) continue;
-				if (! preg_match('/\Aturma_cre_(\d{2})\z/', (string) ($f['adminLabel'] ?? ''), $match) || ($f['type'] ?? '') !== 'select') throw new \RuntimeException('Unrecognized representation.');
-				$reps[] = new Resource_Representation($match[1], (string) $f['id'], $c['class_key'], $identity);
+				if (! preg_match('/\Aturma_cre_(\d{2})\z/', (string) ($f['adminLabel'] ?? ''), $match) || ($f['type'] ?? '') !== 'select') throw new Capacity_Integrity_Exception('Unrecognized representation.');
+				$observed_rows[] = array('cre' => $match[1], 'field_id' => (string) ($f['id'] ?? ''), 'choice_value' => $c['class_key']);
 			}
 		}
-		return array($form, (int) $m['resource_id'], new Resource_Plan($identity, $c['desired_capacity'], $reps, $c['expected_form_id']));
+		$sort_rows = static function (array $rows): array { usort($rows, static fn (array $a, array $b): int => [$a['cre'], $a['field_id'], $a['choice_value']] <=> [$b['cre'], $b['field_id'], $b['choice_value']]); return $rows; };
+		if ($sort_rows($observed_rows) !== $sort_rows($expected_rows)) throw new Capacity_Integrity_Exception('Observed representations differ from the persisted materialization reference.');
+		foreach ($expected_plan->representations() as $representation) {
+			$field = $field_map[$representation->field_id()] ?? null;
+			if ($field === null || (string) (is_object($field) ? ($field->gpiInventory ?? null) : ($field['gpiInventory'] ?? null)) !== 'advanced' || (int) (is_object($field) ? ($field->gpiResource ?? 0) : ($field['gpiResource'] ?? 0)) !== (int) $m['resource_id']) throw new Capacity_Integrity_Exception('Persisted representation Resource binding differs from the Form.');
+		}
+		return array($form, (int) $m['resource_id'], $expected_plan);
 	}
 }
