@@ -12,7 +12,7 @@ final class SchemaTest extends TestCase {
 		$GLOBALS['turmas_bridge_test_dbdelta'] = array();
 		$GLOBALS['turmas_bridge_test_database_queries'] = array();
 		$GLOBALS['turmas_bridge_test_options'] = array();
-		$GLOBALS['wpdb'] = new \wpdb();
+		$GLOBALS['wpdb'] = new Schema_Install_Database();
 	}
 
 	public function test_fresh_install_creates_the_crash_safe_idempotency_schema(): void {
@@ -41,8 +41,10 @@ final class SchemaTest extends TestCase {
 		Schema::install();
 		$state_updates = array_filter($GLOBALS['turmas_bridge_test_database_queries'], static fn (string $query): bool => str_contains($query, "SET state = 'SUCCEEDED'"));
 
-		self::assertCount(2, $state_updates);
-		self::assertCount(10, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertCount(1, $state_updates);
+		self::assertCount(8, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertStringContainsString('UNIQUE KEY class_version (class_key,source_row_version)', Schema::capacity_statement('wp_', ''));
+		self::assertStringContainsString('ENGINE=InnoDB', Schema::capacity_statement('wp_', ''));
 	}
 
 	private function idempotency_statement(): string {
@@ -60,5 +62,24 @@ final class SchemaTest extends TestCase {
 	private function reconciliation_statement(): string {
 		foreach ($GLOBALS['turmas_bridge_test_dbdelta'] as $statement) if (str_contains($statement, 'turmas_bridge_reconciliation_attempts')) return $statement;
 		self::fail('Schema de reconciliação não encontrado.');
+	}
+}
+final class Schema_Install_Database extends \wpdb {
+	public function prepare(string $query, mixed ...$arguments): string { return str_replace('%s', "'" . (string) ($arguments[0] ?? '') . "'", $query); }
+	public function get_results(string $query, string $output = ''): array {
+		if (str_contains($query, 'information_schema.COLUMNS')) {
+			$columns = array(
+				'id'=>array('bigint(20) unsigned',false,null,'auto_increment'),'operation_key'=>array('varchar(80)',false,null,''),'publication_key'=>array('varchar(80)',false,null,''),'class_key'=>array('varchar(120)',false,null,''),'source_row_version'=>array('bigint(20) unsigned',false,null,''),'desired_capacity'=>array('int(10) unsigned',false,null,''),'command_json'=>array('longtext',false,null,''),'payload_hash'=>array('char(64)',false,null,''),'state'=>array('varchar(32)',false,null,''),'attempts'=>array('int(10) unsigned',false,'0',''),'revision'=>array('bigint(20) unsigned',false,'1',''),'capacity_before'=>array('int(10) unsigned',true,null,''),'consumed_before'=>array('int(10) unsigned',true,null,''),'capacity_after'=>array('int(10) unsigned',true,null,''),'consumed_after'=>array('int(10) unsigned',true,null,''),'error_code'=>array('varchar(100)',true,null,''),'evidence_json'=>array('longtext',true,null,''),'created_at'=>array('datetime',false,null,''),'updated_at'=>array('datetime',false,null,'')
+			);
+			if (str_contains($query, 'turmas_bridge_inventory_resources')) $columns = array('expected_representations_json'=>array('longtext',true,null,''));
+			$rows = array(); foreach ($columns as $name => [$type,$nullable,$default,$extra]) $rows[] = array('COLUMN_NAME'=>$name,'COLUMN_TYPE'=>$type,'IS_NULLABLE'=>$nullable?'YES':'NO','COLUMN_DEFAULT'=>$default,'EXTRA'=>$extra);
+			return $rows;
+		}
+		if (str_contains($query, 'information_schema.STATISTICS')) {
+			$indexes=array('PRIMARY'=>array(true,array('id')),'operation_key'=>array(true,array('operation_key')),'class_version'=>array(true,array('class_key','source_row_version')),'publication_key'=>array(false,array('publication_key')));
+			$rows=array(); foreach($indexes as $name=>[$unique,$cols]) foreach($cols as $i=>$column) $rows[]=array('INDEX_NAME'=>$name,'NON_UNIQUE'=>$unique?0:1,'SEQ_IN_INDEX'=>$i+1,'COLUMN_NAME'=>$column);
+			return $rows;
+		}
+		return array();
 	}
 }

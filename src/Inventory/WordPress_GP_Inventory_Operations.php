@@ -10,8 +10,14 @@ namespace TurmasBridge\Inventory;
  * are deliberately isolated here because they are not public vendor APIs.
  */
 final class WordPress_GP_Inventory_Operations implements GP_Inventory_Operations {
+	private GP_Inventory_Compatibility_Policy $compatibility;
+
+	public function __construct(?GP_Inventory_Compatibility_Policy $compatibility = null) {
+		$this->compatibility = $compatibility ?? new GP_Inventory_Compatibility_Policy();
+	}
+
 	public function is_available(): bool {
-		if (! (class_exists('GFAPI')
+		if ($this->availability_error_code() !== null || ! (class_exists('GFAPI')
 			&& method_exists('GFAPI', 'get_form')
 			&& method_exists('GFAPI', 'update_form')
 			&& function_exists('gp_inventory_resources')
@@ -32,7 +38,12 @@ final class WordPress_GP_Inventory_Operations implements GP_Inventory_Operations
 		}
 		return is_object($choices)
 			&& method_exists($choices, 'flush_choice_count_cache')
-			&& method_exists($choices, 'get_choice_count');
+			&& method_exists($choices, 'add_query_hooks')
+			&& method_exists($choices, 'get_claimed_inventory_query')
+			&& method_exists($choices, 'remove_query_hooks');
+	}
+	public function availability_error_code(): ?string {
+		return $this->compatibility->is_supported() ? null : 'GP_INVENTORY_VERSION_UNSUPPORTED';
 	}
 	public function find_resource(Resource_Identity $identity): ?int {
 		if (! $this->is_available()) return null;
@@ -61,31 +72,35 @@ final class WordPress_GP_Inventory_Operations implements GP_Inventory_Operations
 		return $this->inspect_context($plan, $resource_id, true);
 	}
 	private function inspect_context(Resource_Plan $plan, int $resource_id, bool $allow_active_read): array {
+		$this->assert_compatible();
 		$form = $this->form($plan);
 		if (! $this->resource_exists($resource_id)) return $this->state(0, 0, false, 'resource_missing');
 		if (! $allow_active_read && ! empty($form['is_active'])) return $this->state(0, 0, false, 'form_active');
 		$fields = $this->field_map($form);
-		$consumed = $this->fresh_consumed($form, $fields, $plan);
 		$expected_bindings = array();
 		$limits = array();
 		foreach ($plan->representations() as $representation) {
 			$field = $fields[$representation->field_id()] ?? null;
-			if ($field === null) return $this->state(0, $consumed, false, 'representation_missing');
+			if ($field === null) return $this->state(0, 0, false, 'representation_missing');
 			$expected_bindings[] = $plan->form_id() . '_' . $representation->field_id();
-			if ((string) $this->read($field, 'gpiInventory') !== 'advanced' || (int) $this->read($field, 'gpiResource') !== $resource_id) return $this->state(0, $consumed, false, 'field_resource_drift');
+			if ((string) $this->read($field, 'gpiInventory') !== 'advanced' || (int) $this->read($field, 'gpiResource') !== $resource_id) return $this->state(0, 0, false, 'field_resource_drift');
 			$choice = $this->choice($field, $representation->choice_value());
-			if ($choice === null) return $this->state(0, $consumed, false, 'choice_value_drift');
+			if ($choice === null) return $this->state(0, 0, false, 'choice_value_drift');
 			$limit = $choice['inventory_limit'] ?? null;
-			if (! is_numeric($limit) || (int) $limit < 1) return $this->state(0, $consumed, false, 'capacity_missing');
+			if (! is_numeric($limit) || (int) $limit < 1) return $this->state(0, 0, false, 'capacity_missing');
 			$limits[] = (int) $limit;
 		}
 		$bindings = array_map('strval', (array) get_post_meta($resource_id, 'gpi_field'));
-		foreach ($expected_bindings as $binding) if (! in_array($binding, $bindings, true)) return $this->state($limits[0] ?? 0, $consumed, false, 'binding_missing');
-		foreach ($bindings as $binding) if (str_starts_with($binding, $plan->form_id() . '_') && ! in_array($binding, $expected_bindings, true)) return $this->state($limits[0] ?? 0, $consumed, false, 'binding_drift');
-		if (count(array_unique($limits)) !== 1) return $this->state(0, $consumed, false, 'capacity_drift');
+		foreach ($expected_bindings as $binding) if (! in_array($binding, $bindings, true)) return $this->state($limits[0] ?? 0, 0, false, 'binding_missing');
+		$actual_bindings = array_values(array_unique($bindings)); $expected_unique = array_values(array_unique($expected_bindings)); sort($actual_bindings, SORT_STRING); sort($expected_unique, SORT_STRING);
+		if ($actual_bindings !== $expected_unique) return $this->state($limits[0] ?? 0, 0, false, 'binding_drift');
+		if (count(array_unique($limits)) !== 1) return $this->state(0, 0, false, 'capacity_drift');
+		// Validate all persisted representations and bindings before trusting a consumption query.
+		$consumed = $this->fresh_consumed($form, $fields, $plan);
 		return $this->state($limits[0], $consumed, true, null);
 	}
 	public function synchronize(Resource_Plan $plan, int $resource_id): array {
+		$this->assert_compatible();
 		$form = $this->form($plan);
 		if (! empty($form['is_active'])) return $this->state(0, 0, false, 'form_active');
 		$fields = $this->field_map($form);
@@ -134,14 +149,41 @@ final class WordPress_GP_Inventory_Operations implements GP_Inventory_Operations
 	private function replace_field(array &$form, string $field_id, mixed $replacement): void { foreach ((array) $form['fields'] as $index => $field) if ((string) $this->read($field, 'id') === $field_id) { $form['fields'][$index] = $replacement; return; } }
 	/** @return array<string,mixed>|null */
 	private function choice(mixed $field, string $value): ?array { foreach ((array) $this->read($field, 'choices') as $choice) if ((string) ($choice['value'] ?? '') === $value) return $choice; return null; }
-	/** @param array<string,mixed> $form @param array<string,mixed> $fields */
+	/**
+	 * Reproduce GP Inventory 1.0.29's consumed units per Entry and choice, then
+	 * union the persisted representation set. Vendor quantity inputs are summed
+	 * with a default of one for the vendor's LEFT JOIN no-quantity case.
+	 * @param array<string,mixed> $form @param array<string,mixed> $fields
+	 */
 	private function fresh_consumed(array $form, array $fields, Resource_Plan $plan): int {
-		$first = $plan->representations()[0] ?? null;
-		if (! $first || ! isset($fields[$first->field_id()])) throw new Inventory_Integration_Exception('turmas_bridge_inventory_representation_missing', 'Não existe representação para leitura de consumo.');
+		$this->assert_compatible();
 		$choices = \gp_inventory_type_choices();
-		if (! method_exists($choices, 'flush_choice_count_cache') || ! method_exists($choices, 'get_choice_count')) throw new Inventory_Integration_Exception('turmas_bridge_gp_inventory_incompatible', 'O GP Inventory não possui os símbolos necessários para leitura segura.');
+		if (! method_exists($choices, 'flush_choice_count_cache') || ! method_exists($choices, 'add_query_hooks') || ! method_exists($choices, 'get_claimed_inventory_query') || ! method_exists($choices, 'remove_query_hooks')) throw new Inventory_Integration_Exception('turmas_bridge_gp_inventory_incompatible', 'O GP Inventory não possui os símbolos necessários para leitura agregada segura.');
 		$choices->flush_choice_count_cache($form);
-		return (int) $choices->get_choice_count($first->choice_value(), $fields[$first->field_id()], $plan->form_id());
+		global $wpdb;
+		$representation_results = array();
+		foreach ($plan->representations() as $representation) {
+			$field = $fields[$representation->field_id()] ?? null;
+			if ($field === null || ! is_object($field)) throw new Inventory_Integration_Exception('turmas_bridge_inventory_representation_missing', 'Uma representação persistida não está disponível para leitura de consumo.');
+			$query = null;
+			try { $choices->add_query_hooks($field); $query = $choices->get_claimed_inventory_query($field); }
+			catch (\Throwable) { throw new Inventory_Integration_Exception('turmas_bridge_consumed_unverified', 'A consulta autoritativa de consumo falhou.'); }
+			finally { $choices->remove_query_hooks(); }
+			if (! is_array($query) || ! isset($query['select'], $query['from'], $query['join'], $query['where'])) throw new Inventory_Integration_Exception('turmas_bridge_gp_inventory_incompatible', 'A estrutura da consulta GP Inventory é incompatível.');
+			$query['select'] = "SELECT e.id AS entry_id, em.meta_value AS class_choice, SUM(IF(em_quantity.meta_value IS NOT NULL, em_quantity.meta_value, 1)) AS consumed_quantity, SUM(IF(em_quantity.meta_value IS NOT NULL AND CAST(em_quantity.meta_value AS CHAR) NOT REGEXP '^[1-9][0-9]*$', 1, 0)) AS malformed_quantity_count";
+			$query['group_by'] = 'GROUP BY e.id, em.meta_value';
+			$sql = implode(' ', array_filter($query, 'is_string'));
+			$rows = $wpdb->get_results($sql, 'ARRAY_A');
+			if ($wpdb->last_error !== '' || ! is_array($rows)) throw new Inventory_Integration_Exception('turmas_bridge_consumed_unverified', 'A leitura fresca de Entries não pôde ser confirmada.');
+			$representation_results[] = array('choice_value' => $representation->choice_value(), 'rows' => $rows);
+		}
+		try { return Entry_Consumption_Aggregator::aggregate($representation_results); }
+		catch (\TurmasBridge\Capacity\Capacity_Integrity_Exception $error) { throw new Inventory_Integration_Exception('turmas_bridge_' . strtolower($error->integrity_code()), 'O resultado de consumo do GP Inventory não pôde ser reconciliado.'); }
+	}
+
+	private function assert_compatible(): void {
+		if (! $this->compatibility->is_supported()) throw new Inventory_Integration_Exception('turmas_bridge_gp_inventory_version_unsupported', 'A versão do GP Inventory não está na allowlist validada para operações de capacidade.');
+		if (! $this->is_available()) throw new Inventory_Integration_Exception('turmas_bridge_gp_inventory_incompatible', 'O runtime do GP Inventory não possui os símbolos validados.');
 	}
 	/** @return array{capacity:int,consumed:int,healthy:bool,reason:?string} */
 	private function state(int $capacity, int $consumed, bool $healthy, ?string $reason): array { return array('capacity' => $capacity, 'consumed' => $consumed, 'healthy' => $healthy, 'reason' => $reason); }
