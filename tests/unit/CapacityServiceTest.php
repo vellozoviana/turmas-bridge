@@ -82,6 +82,26 @@ final class CapacityServiceTest extends TestCase {
 	public function test_inspection_failure_before_any_effect_is_failed(): void {
 		$g = new CapacityFakeGateway(); $g->on_read = static function (): void { throw new \RuntimeException(); }; $r = (new Capacity_Service(new CapacityMemoryStore(), $g))->execute(self::command()); self::assertSame('FAILED', $r['state']); self::assertSame(0, $g->writes); self::assertFalse($g->locked);
 	}
+	public function test_retry_of_unknown_operation_does_not_create_ghost_ledger(): void {
+		$store = new CapacityMemoryStore(); $gateway = new CapacityFakeGateway();
+		$result = (new Capacity_Service($store, $gateway))->execute(self::command(), false, true);
+		self::assertInstanceOf(\WP_Error::class, $result);
+		self::assertSame('CAPACITY_OPERATION_NOT_FOUND', $result->get_error_code());
+		self::assertSame(404, $result->get_error_data()['status']);
+		self::assertSame(array(), $store->rows);
+		self::assertSame(0, $store->reserves); self::assertSame(0, $store->transitions);
+		self::assertSame(0, $gateway->reads); self::assertSame(0, $gateway->writes);
+	}
+	public function test_retry_of_existing_pending_operation_does_not_transition_or_inspect(): void {
+		$command = self::command(); $store = new CapacityMemoryStore(); $store->reserve($command);
+		$before = $store->rows; $gateway = new CapacityFakeGateway();
+		$result = (new Capacity_Service($store, $gateway))->execute($command, false, true);
+		self::assertInstanceOf(\WP_Error::class, $result);
+		self::assertSame('CAPACITY_RETRY_NOT_SAFE', $result->get_error_code());
+		self::assertSame($before, $store->rows);
+		self::assertSame(1, $store->reserves); self::assertSame(0, $store->transitions);
+		self::assertSame(0, $gateway->reads); self::assertSame(0, $gateway->writes);
+	}
 	public function test_prewrite_failed_replay_is_stable_and_explicit_retry_recovers_after_restart(): void {
 		$g = new CapacityFakeGateway(); $g->on_read = static function (): void { throw new \RuntimeException('pre-write inspection outage'); };
 		$store = new CapacityMemoryStore(); $service = new Capacity_Service($store, $g);
@@ -101,11 +121,12 @@ final class CapacityServiceTest extends TestCase {
 }
 
 final class CapacityMemoryStore implements Capacity_Store {
-	public array $rows = array(); public bool $fail_success = false;
+	public array $rows = array(); public bool $fail_success = false; public int $reserves = 0; public int $transitions = 0;
 	public function find(string $key): ?array { return $this->rows[$key] ?? null; }
-	public function reserve(array $c): bool { $this->rows[$c['operation_key']] = $c + array('command_json' => json_encode($c), 'payload_hash' => Capacity_Command::hash($c), 'state' => 'PENDING', 'attempts' => 0, 'revision' => 1); return true; }
+	public function reserve(array $c): bool { $this->reserves++; $this->rows[$c['operation_key']] = $c + array('command_json' => json_encode($c), 'payload_hash' => Capacity_Command::hash($c), 'state' => 'PENDING', 'attempts' => 0, 'revision' => 1); return true; }
 	public function conflict(array $c): ?string { foreach ($this->rows as $key => $r) { if ($key === $c['operation_key'] || $r['class_key'] !== $c['class_key']) continue; if (in_array($r['state'], array('APPLYING', 'RECONCILIATION_REQUIRED'), true)) return 'PRIOR_OPERATION_UNRESOLVED'; if ($r['source_row_version'] >= $c['source_row_version']) return 'SOURCE_VERSION_CONFLICT'; } return null; }
 	public function transition(array $r, string $state, array $evidence, ?string $error, bool $attempt = false): ?array {
+		$this->transitions++;
 		if (($this->fail_success && $state === 'APPLIED_VERIFIED') || $this->rows[$r['operation_key']]['revision'] !== $r['revision']) return null;
 		return $this->rows[$r['operation_key']] = array_merge($r, $evidence, array('state' => $state, 'error_code' => $error, 'revision' => $r['revision'] + 1, 'attempts' => $r['attempts'] + ($attempt ? 1 : 0)));
 	}

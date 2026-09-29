@@ -23,7 +23,7 @@ final class Capacity_Service {
 			$r = $this->store->find($c['operation_key']);
 			if ($r && ! hash_equals((string) $r['payload_hash'], Capacity_Command::hash($c))) return $this->error('IDEMPOTENCY_CONFLICT', 409);
 			if (! $r) {
-				if ($reconcile) return $this->error('CAPACITY_OPERATION_NOT_FOUND', 404);
+				if ($reconcile || $retry_prewrite_failure) return $this->error('CAPACITY_OPERATION_NOT_FOUND', 404);
 				$conflict = $this->store->conflict($c);
 				if ($conflict !== null) return $this->error($conflict, 409);
 				if (! $this->store->reserve($c)) return $this->error('CAPACITY_STORE_FAILED', 503);
