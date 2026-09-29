@@ -18,6 +18,11 @@ final class Idempotency_Repository implements Publication_Command_Store {
 		return is_array($row) ? $row : null;
 	}
 
+	public function has_unresolved_publication(string $publication_key, string $except_key): ?bool {
+		$count = $this->wpdb->get_var($this->wpdb->prepare("SELECT COUNT(*) FROM {$this->table()} WHERE publication_key = %s AND idempotency_key <> %s AND state IN (%s, %s)", $publication_key, $except_key, Publication_Command_Store::MATERIALIZING, Publication_Command_Store::RECONCILIATION_REQUIRED));
+		return $count === null || $this->wpdb->last_error !== '' ? null : (int) $count > 0;
+	}
+
 	public function reserve(string $idempotency_key, string $payload_hash, string $publication_key): array {
 		$time = current_time('mysql', true);
 		$inserted = $this->wpdb->insert($this->table(), array('idempotency_key' => $idempotency_key, 'payload_hash' => $payload_hash, 'publication_key' => $publication_key, 'state' => Publication_Command_Store::RESERVED, 'response_status' => 202, 'response_body' => '{"status":"processing"}', 'created_at' => $time, 'updated_at' => $time));

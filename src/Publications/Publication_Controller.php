@@ -34,6 +34,9 @@ final class Publication_Controller {
 		try { $decoded = json_decode($body, true, 512, JSON_THROW_ON_ERROR); } catch (\JsonException) { return $this->error('turmas_bridge_invalid_json', 'O corpo JSON é inválido.', 400); }
 		$payload = Publication_Payload::validate($decoded);
 		if (is_wp_error($payload)) return $payload;
+		$unresolved = $this->store->has_unresolved_publication((string) $payload['publication']['publication_key'], $key);
+		if ($unresolved === null) return $this->error('turmas_bridge_command_store_failed', 'Não foi possível verificar operações anteriores.', 500);
+		if ($unresolved) return $this->error('turmas_bridge_reconciliation_required', 'Outra operação desta Publicação ainda requer reconciliação.', 409);
 		$reservation = $this->store->reserve($key, $hash, (string) $payload['publication']['publication_key']);
 		if ($reservation['result'] === Publication_Command_Store::EXISTING_DIFFERENT_HASH) return $this->error('turmas_bridge_idempotency_conflict', 'A chave de idempotência já foi usada com outro conteúdo.', 409);
 		if ($reservation['result'] === Publication_Command_Store::STORAGE_FAILURE) return $this->error('turmas_bridge_command_store_failed', 'Não foi possível reservar o comando.', 500);
@@ -98,7 +101,7 @@ final class Publication_Controller {
 	private function processing(): \WP_REST_Response { return new \WP_REST_Response(array('status' => 'processing', 'idempotent_replay' => true), 202); }
 	/** @param array<string,mixed> $record */
 	private function is_stale(array $record): bool { $updated = strtotime((string) ($record['updated_at'] ?? '') . ' UTC'); return $updated !== false && (int) call_user_func($this->clock) - $updated >= self::RESERVED_STALE_SECONDS; }
-	private function safe_pre_side_effect_error(\WP_Error $error): bool { return in_array($error->get_error_code(), array('turmas_bridge_gravity_forms_unavailable', 'turmas_bridge_invalid_template'), true); }
+	private function safe_pre_side_effect_error(\WP_Error $error): bool { $data = $error->get_error_data(); return is_array($data) && ($data['pre_effect'] ?? false) === true; }
 
 	/** @param array<string, mixed> $record @return \WP_REST_Response|\WP_Error */
 	private function replay(array $record): \WP_REST_Response|\WP_Error {

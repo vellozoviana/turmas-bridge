@@ -44,15 +44,27 @@ final class IdempotencyRepositoryTest extends TestCase {
 		self::assertSame(Publication_Command_Store::ACQUIRED, $repository->begin_materialization('idempotency-repository-04', $hash, '2027:MT1')['result']);
 		self::assertSame(Publication_Command_Store::MATERIALIZING, $database->records['idempotency-repository-04']['state']);
 	}
+
+	public function test_unresolved_publication_read_blocks_other_keys_and_fails_closed_on_query_error(): void {
+		$database = new Idempotency_Test_Database(); $repository = new Idempotency_Repository($database); $hash = str_repeat('a', 64);
+		$repository->reserve('idempotency-repository-05', $hash, '2027:MT1');
+		self::assertFalse($repository->has_unresolved_publication('2027:MT1', 'another-key'));
+		$repository->begin_materialization('idempotency-repository-05', $hash, '2027:MT1');
+		self::assertTrue($repository->has_unresolved_publication('2027:MT1', 'another-key'));
+		self::assertFalse($repository->has_unresolved_publication('2027:MT1', 'idempotency-repository-05'));
+		$database->fail_read = true;
+		self::assertNull($repository->has_unresolved_publication('2027:MT1', 'another-key'));
+	}
 }
 
 final class Idempotency_Test_Database extends \wpdb {
 	/** @var array<string,array<string,mixed>> */ public array $records = array();
 	/** @var list<mixed> */ private array $arguments = array();
-	public int $inserts = 0; public bool $fail_insert = false; public bool $fail_query = false;
+	public int $inserts = 0; public bool $fail_insert = false; public bool $fail_query = false; public bool $fail_read = false;
 	public function prepare(string $query, mixed ...$arguments): string { $this->arguments = $arguments; return $query; }
 	public function insert(string $table, array $data): int|false { $this->inserts++; if ($this->fail_insert || isset($this->records[(string) $data['idempotency_key']])) return false; $this->records[(string) $data['idempotency_key']] = $data; return 1; }
 	public function get_row(string $query, string $output = ''): mixed { $key = (string) ($this->arguments[0] ?? ''); return $this->records[$key] ?? null; }
+	public function get_var(string $query): mixed { if ($this->fail_read) { $this->last_error = 'synthetic read failure'; return null; } $this->last_error = ''; $args = $this->arguments; $count = 0; foreach ($this->records as $key => $record) if (($record['publication_key'] ?? '') === ($args[0] ?? '') && $key !== ($args[1] ?? '') && in_array($record['state'] ?? '', array($args[2] ?? '', $args[3] ?? ''), true)) $count++; return $count; }
 	public function query(string $query): int|false {
 		if ($this->fail_query) return false;
 		$args = $this->arguments;
