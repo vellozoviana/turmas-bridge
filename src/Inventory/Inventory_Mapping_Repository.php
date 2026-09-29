@@ -34,7 +34,7 @@ final class Inventory_Mapping_Repository implements Inventory_Mapping_Store {
 	}
 	public function reconciliation_required(Resource_Identity $identity, string $error_code): bool { return $this->update($identity, array('status' => 'RECONCILIATION_REQUIRED', 'last_error_code' => $error_code)); }
 	public function acquire_lock(Resource_Identity $identity): bool { return (int) $this->wpdb->get_var($this->wpdb->prepare('SELECT GET_LOCK(%s, 10)', $this->lock_name($identity))) === 1; }
-	public function release_lock(Resource_Identity $identity): void { $this->wpdb->get_var($this->wpdb->prepare('SELECT RELEASE_LOCK(%s)', $this->lock_name($identity))); }
+	public function release_lock(Resource_Identity $identity): void { if ((int) $this->wpdb->get_var($this->wpdb->prepare('SELECT RELEASE_LOCK(%s)', $this->lock_name($identity))) !== 1) throw new \RuntimeException('Inventory lock release unconfirmed.'); }
 	/** @param array<string,mixed> $data */
 	private function update(Resource_Identity $identity, array $data): bool { $data['updated_at'] = current_time('mysql', true); return $this->wpdb->update($this->table(), $data, array('class_key' => $identity->class_key())) !== false; }
 	private function table(): string { return $this->wpdb->prefix . 'turmas_bridge_inventory_resources'; }

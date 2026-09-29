@@ -13,6 +13,7 @@ final class Plugin {
 	public static function register(): void {
 		add_action('plugins_loaded', array(self::class, 'maybe_upgrade'));
 		add_action('rest_api_init', array(Bridge_Controller::class, 'register_routes'));
+		add_action('rest_api_init', array(\TurmasBridge\Capacity\Capacity_Controller::class, 'register_routes'));
 		add_action('admin_menu', array(Settings_Page::class, 'register_page'));
 		add_action('admin_init', array(Settings_Page::class, 'handle_submission'));
 		add_action(Nonce_Store::CLEANUP_HOOK, array(Nonce_Store::class, 'cleanup_expired'));

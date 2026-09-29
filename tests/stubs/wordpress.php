@@ -59,6 +59,7 @@ class WP_REST_Response {
 }
 
 class wpdb {
+	public string $last_error = '';
 	public string $prefix = 'wp_';
 	public string $options = 'wp_options';
 	public int $insert_id = 0;
@@ -67,7 +68,11 @@ class wpdb {
 	public function get_row(string $query, string $output = ''): mixed { return null; }
 	public function get_results(string $query, string $output = ''): array { return array(); }
 	public function get_col(string $query): array { return array(); }
-	public function get_var(string $query): mixed { return 1; }
+	public function get_var(string $query): mixed {
+		if (str_contains($query, 'information_schema.COLUMNS')) return 19;
+		if (str_contains($query, 'information_schema.STATISTICS')) return 4;
+		return str_contains($query, 'SELECT ENGINE FROM information_schema.TABLES') ? 'InnoDB' : 1;
+	}
 	public function insert(string $table, array $data): int|false { return 1; }
 	public function update(string $table, array $data, array $where): int|false { return 1; }
 	public function query(string $query): int|false { $GLOBALS['turmas_bridge_test_database_queries'][] = $query; return 1; }
@@ -114,9 +119,17 @@ function wp_schedule_event(int $timestamp, string $recurrence, string $hook): bo
 function is_wp_error(mixed $thing): bool { return $thing instanceof WP_Error; }
 function wp_generate_uuid4(): string { return '11111111-1111-4111-8111-111111111111'; }
 function plugin_dir_path(string $file): string { return dirname($file) . DIRECTORY_SEPARATOR; }
-function get_post_type(int $post_id): string|false { return false; }
+function get_post_type(int $post_id): string|false { return isset($GLOBALS['capacity_test_meta'][$post_id]) ? 'gpi_resource' : false; }
 function get_posts(array $args = array()): array { return array(); }
-function get_post_meta(int $post_id, string $key = '', bool $single = false): mixed { return $single ? '' : array(); }
-function update_post_meta(int $post_id, string $key, mixed $value): int|bool { return 1; }
+function get_post_meta(int $post_id, string $key = '', bool $single = false): mixed { return $GLOBALS['capacity_test_meta'][$post_id][$key] ?? ($single ? '' : array()); }
+function update_post_meta(int $post_id, string $key, mixed $value): int|bool {
+	if (isset($GLOBALS['capacity_test_meta'])) {
+		$GLOBALS['capacity_test_writes'][] = array($post_id, $key, $value);
+		if (! empty($GLOBALS['capacity_test_meta_fail'])) return false;
+		$GLOBALS['capacity_test_meta'][$post_id][$key] = $value;
+		if (isset($GLOBALS['capacity_test_meta_write_hook'])) ($GLOBALS['capacity_test_meta_write_hook'])();
+	}
+	return 1;
+}
 function wp_insert_post(array $postarr, bool $wp_error = false): int|WP_Error { return 1; }
 function do_action(string $hook, mixed ...$args): void {}

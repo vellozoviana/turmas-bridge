@@ -1,5 +1,17 @@
 # Mixed-version matrix and coordinated release
 
+## P3-D capacity extension (candidate, not deployed)
+
+Capacity sync requires EPF 0.14.0/schema 0.8.0 and Bridge 0.11.0/schema 0.9.0.
+Both POST capacity routes retain HMAC v2; GET capacity status retains v1.
+An older Bridge has no capacity endpoint: EPF records an unverified result,
+never falls back to materialization or bypasses the active-Form gate.
+Schema/runtime upgrades require a separate authorized physical gate.
+No push or deployment is authorized by this document.
+See [P3-D capacity contract](P3-D-CAPACITY-V1.md).
+
+## Historical HMAC rollout matrix
+
 | EPF | Bridge | POST command behavior | GET query behavior |
 | --- | --- | --- | --- |
 | 0.13.1 (old) | 0.10.0 (old) | Legacy v1 accepted; known unsigned Idempotency-Key defect remains | v1 accepted |

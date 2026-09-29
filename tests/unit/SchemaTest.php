@@ -41,8 +41,10 @@ final class SchemaTest extends TestCase {
 		Schema::install();
 		$state_updates = array_filter($GLOBALS['turmas_bridge_test_database_queries'], static fn (string $query): bool => str_contains($query, "SET state = 'SUCCEEDED'"));
 
-		self::assertCount(2, $state_updates);
-		self::assertCount(10, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertCount(1, $state_updates);
+		self::assertCount(7, $GLOBALS['turmas_bridge_test_dbdelta']);
+		self::assertStringContainsString('UNIQUE KEY class_version (class_key,source_row_version)', Schema::capacity_statement('wp_', ''));
+		self::assertStringContainsString('ENGINE=InnoDB', Schema::capacity_statement('wp_', ''));
 	}
 
 	private function idempotency_statement(): string {

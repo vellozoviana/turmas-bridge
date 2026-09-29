@@ -6,7 +6,13 @@ TURMAS-EPF não acessa bancos ou tabelas deste site.
 
 ## Estado atual
 
-Versão pública atual: `0.10.1`. Versão do contrato REST: `v1`. Schema local: `0.8.0`.
+Versão candidata: `0.11.0`. Versão do contrato REST: `v1`. Schema: `0.9.0`.
+
+P3-D acrescenta aplicação, status e reconciliação de capacidade posterior à
+publicação, com EPF 0.14.0/schema 0.8.0. Form ativo bloqueia qualquer escrita
+de capacidade. Consulte [o contrato](docs/P3-D-CAPACITY-V1.md) e
+[o roteiro físico futuro](docs/p3/P3-PHYSICAL-MASTER-RUNBOOK.md).
+Sem migration no LAB, push ou P3 físico nesta entrega.
 
 Esta correção requer EPF `0.13.2` para comandos POST: HMAC v2 autentica também
 Idempotency-Key e rejeita downgrade, valores inválidos e headers duplicados.
@@ -24,6 +30,9 @@ O Bridge disponibiliza as operações autenticadas:
 - `POST /wp-json/turmas-bridge/v1/publicacoes/{publication_key}/activation`.
 - `GET /wp-json/turmas-bridge/v1/operacoes/{operation_key}`.
 - `POST /wp-json/turmas-bridge/v1/operacoes/{operation_key}/reconciliation`.
+- `POST /wp-json/turmas-bridge/v1/capacidades`.
+- `GET /wp-json/turmas-bridge/v1/capacidades/{operation_key}`.
+- `POST /wp-json/turmas-bridge/v1/capacidades/{operation_key}/reconciliation`.
 
 O `POST` valida o contrato, protege a requisição por HMAC e Idempotency-Key,
 materializa uma cópia técnica **inativa** do template, prepara choices por

@@ -141,7 +141,9 @@ final class WordPress_GP_Inventory_Operations implements GP_Inventory_Operations
 		$choices = \gp_inventory_type_choices();
 		if (! method_exists($choices, 'flush_choice_count_cache') || ! method_exists($choices, 'get_choice_count')) throw new Inventory_Integration_Exception('turmas_bridge_gp_inventory_incompatible', 'O GP Inventory não possui os símbolos necessários para leitura segura.');
 		$choices->flush_choice_count_cache($form);
-		return (int) $choices->get_choice_count($first->choice_value(), $fields[$first->field_id()], $plan->form_id());
+		$count = $choices->get_choice_count($first->choice_value(), $fields[$first->field_id()], $plan->form_id());
+		if ((! is_int($count) && ! (is_string($count) && ctype_digit($count))) || filter_var($count, FILTER_VALIDATE_INT, array('options' => array('min_range' => 0, 'max_range' => PHP_INT_MAX))) === false) throw new Inventory_Integration_Exception('turmas_bridge_consumed_unverified', 'O consumo não pôde ser verificado.');
+		return (int) $count;
 	}
 	/** @return array{capacity:int,consumed:int,healthy:bool,reason:?string} */
 	private function state(int $capacity, int $consumed, bool $healthy, ?string $reason): array { return array('capacity' => $capacity, 'consumed' => $consumed, 'healthy' => $healthy, 'reason' => $reason); }

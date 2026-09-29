@@ -1,0 +1,17 @@
+{
+  "synthetic_only": true,
+  "command": {
+    "schema_version": "1",
+    "operation_key": "capacity-d9c9a07079f44c5abea1d5863cc3b04e00ab648223d496d32431c57d0213f878",
+    "publication_key": "2095:UNIT",
+    "class_key": "2095:UNIT:01.01",
+    "expected_form_id": 800,
+    "source_turma_id": 900,
+    "source_row_version": 2,
+    "desired_capacity": 5,
+    "reason": "Synthetic capacity test"
+  },
+  "body": "{\"schema_version\":\"1\",\"operation_key\":\"capacity-d9c9a07079f44c5abea1d5863cc3b04e00ab648223d496d32431c57d0213f878\",\"publication_key\":\"2095:UNIT\",\"class_key\":\"2095:UNIT:01.01\",\"expected_form_id\":800,\"source_turma_id\":900,\"source_row_version\":2,\"desired_capacity\":5,\"reason\":\"Synthetic capacity test\"}",
+  "canonical": "v2\nPOST\n/turmas-bridge/v1/capacidades\n\n1760000000\nsynthetic-p3-capacity-vector\nidempotency-key:capacity-d9c9a07079f44c5abea1d5863cc3b04e00ab648223d496d32431c57d0213f878\n832aa1a21bd2b6d3d3f6581ee1d363259bee663dc04d94af77d585d3ca3f17ff",
+  "signature": "v2=de1d354a7e96abbe2bb69c85921532afaffd10e82529145bf323669d7cfb1526"
+}
