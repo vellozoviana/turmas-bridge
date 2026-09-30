@@ -16,6 +16,7 @@ final class PublicationChoiceServiceTest extends TestCase {
 		self::assertSame('2027:MT1:01.01', $gateway->form['fields'][0]['choices'][0]['value']);
 		self::assertSame('2027:MT1:01.01', $gateway->form['fields'][1]['choices'][0]['value']);
 		self::assertSame(1, count($result['resource_plans'])); self::assertSame(30, $result['resource_plans'][0]['capacity']); self::assertCount(2, $result['resource_plans'][0]['representations']);
+		self::assertSame(array('01', '02'), array_column($gateway->form['fields'][4]['choices'], 'value'));
 		self::assertSame(array(), $gateway->form['fields'][2]['choices']); self::assertSame('Nome', $gateway->form['fields'][3]['label']); self::assertFalse($gateway->form['is_active']);
 	}
 
@@ -28,7 +29,7 @@ final class PublicationChoiceServiceTest extends TestCase {
 	public function test_incidental_cre_field_order_does_not_create_false_choice_drift(): void {
 		$store = new Choice_Store_Fake(); $gateway = new Choice_Gateway_Fake(); $service = new Publication_Choice_Service($store, $gateway);
 		$service->prepare($this->payload());
-		$gateway->form['fields'] = array($gateway->form['fields'][1], $gateway->form['fields'][0], $gateway->form['fields'][2], $gateway->form['fields'][3]);
+		$gateway->form['fields'] = array($gateway->form['fields'][1], $gateway->form['fields'][0], $gateway->form['fields'][2], $gateway->form['fields'][3], $gateway->form['fields'][4]);
 
 		$result = $service->prepare($this->payload());
 
@@ -55,6 +56,12 @@ final class Choice_Store_Fake implements Materialization_Store {
 
 final class Choice_Gateway_Fake implements Gravity_Forms_Gateway {
 	/** @var array<string,mixed> */ public array $form; public int $updates = 0;
-	public function __construct() { $this->form = array('id' => 412, 'is_active' => false, 'fields' => array(array('id' => 10,'type' => 'select','adminLabel' => 'turma_cre_01','choices' => array(array('text'=>'old','value'=>'old'))), array('id' => 11,'type' => 'select','adminLabel' => 'turma_cre_02','choices' => array(array('text'=>'old','value'=>'old'))), array('id' => 12,'type' => 'select','adminLabel' => 'turma_cre_03','choices' => array(array('text'=>'old','value'=>'old'))), array('id' => 30,'type' => 'text','label' => 'Nome','choices' => array(array('text'=>'keep','value'=>'keep'))))); }
+	public function __construct() { $this->form = array('id' => 412, 'is_active' => false, 'fields' => array(
+		array('id' => 10,'type' => 'select','adminLabel' => 'turma_cre_01','isRequired' => true,'conditionalLogic' => array('actionType' => 'show','logicType' => 'all','rules' => array(array('fieldId' => 9,'operator' => 'is','value' => '01'))),'choices' => array(array('text'=>'old','value'=>'old'))),
+		array('id' => 11,'type' => 'select','adminLabel' => 'turma_cre_02','isRequired' => true,'conditionalLogic' => array('actionType' => 'show','logicType' => 'all','rules' => array(array('fieldId' => 9,'operator' => 'is','value' => '02'))),'choices' => array(array('text'=>'old','value'=>'old'))),
+		array('id' => 12,'type' => 'select','adminLabel' => 'turma_cre_03','isRequired' => true,'conditionalLogic' => array('actionType' => 'show','logicType' => 'all','rules' => array(array('fieldId' => 9,'operator' => 'is','value' => '03'))),'choices' => array(array('text'=>'old','value'=>'old'))),
+		array('id' => 30,'type' => 'text','label' => 'Nome','choices' => array(array('text'=>'keep','value'=>'keep'))),
+		array('id' => 9,'type' => 'select','adminLabel' => 'turmas_cre_selector','isRequired' => true,'placeholder' => 'Selecione a CRE','choices' => array(array('text'=>'CRE 01','value'=>'01'),array('text'=>'CRE 02','value'=>'02'),array('text'=>'CRE 03','value'=>'03'))),
+	)); }
 	public function is_available(): bool { return true; } public function form(int $form_id): ?array { return $this->form; } public function duplicate_inactive(int $template_id, string $title, string $marker): int|\WP_Error { return 412; } public function update_form(array $form): bool|\WP_Error { $this->updates++; $this->form = $form; return true; }
 }

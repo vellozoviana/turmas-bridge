@@ -40,6 +40,16 @@ final class Materialization_Service implements Publication_Materializer {
 		if (! $this->valid_form($form, false)) { $this->store->failed($key, $form_id, 'turmas_bridge_clone_structure_invalid'); return $this->error('turmas_bridge_clone_structure_invalid', 'O formulário criado requer reconciliação.', 502); }
 		$clone_error = $this->preflight->validate($payload, $form);
 		if ($clone_error !== null) { $this->store->failed($key, $form_id, $clone_error->get_error_code()); return $this->error('turmas_bridge_clone_structure_invalid', 'O formulário criado divergiu do template validado e requer reconciliação.', 502); }
+		$contract = new \TurmasBridge\Choices\Cre_Selection_Contract();
+		if (count($contract->required_cres((array) ($payload['classes'] ?? array()))) > 1) {
+			$mapper = new \TurmasBridge\Choices\Template_Field_Map();
+			$template_map = $mapper->resolve($template);
+			$clone_map = $mapper->resolve($form);
+			if (is_wp_error($template_map) || is_wp_error($clone_map) || $contract->signature($template, $template_map) !== $contract->signature($form, $clone_map)) {
+				$this->store->failed($key, $form_id, 'turmas_bridge_clone_structure_invalid');
+				return $this->error('turmas_bridge_clone_structure_invalid', 'O formulário criado divergiu do template validado e requer reconciliação.', 502);
+			}
+		}
 		$fields = $this->choice_field_ids($form);
 		if (! $this->store->materialized($key, $form_id, $fields)) { $this->store->failed($key, $form_id, 'turmas_bridge_materialization_persist_failed'); return $this->error('turmas_bridge_materialization_persist_failed', 'O formulário foi criado e requer reconciliação.', 502); }
 		return $this->response($key, $form_id, false);
@@ -47,7 +57,7 @@ final class Materialization_Service implements Publication_Materializer {
 	/** @param array<string, mixed>|null $form */
 	private function valid_form(?array $form, bool $require_active): bool { return is_array($form) && ($require_active ? ! empty($form['is_active']) : empty($form['is_active'])) && empty($form['is_trash']) && ! empty($form['fields']) && $this->choice_field_ids($form) !== array(); }
 	/** @param array<string, mixed> $form @return list<string> */
-	private function choice_field_ids(array $form): array { $ids = array(); foreach ((array) $form['fields'] as $field) { if (! is_array($field) && ! is_object($field)) continue; $choices = is_array($field) ? ($field['choices'] ?? array()) : ($field->choices ?? array()); $id = is_array($field) ? ($field['id'] ?? null) : ($field->id ?? null); if ($id !== null && is_array($choices) && $choices !== array()) $ids[] = (string) $id; } return $ids; }
+	private function choice_field_ids(array $form): array { $ids = array(); foreach ((array) $form['fields'] as $field) { if (! is_array($field) && ! is_object($field)) continue; $data = is_array($field) ? $field : get_object_vars($field); $choices = $data['choices'] ?? array(); $id = $data['id'] ?? null; if (($data['adminLabel'] ?? '') === \TurmasBridge\Choices\Cre_Selection_Contract::CONTROLLER_LABEL) continue; if ($id !== null && is_array($choices) && $choices !== array()) $ids[] = (string) $id; } return $ids; }
 	/** @return array<string,mixed>|\WP_Error */
 	private function verify_existing(string $key, int $form_id): array|\WP_Error { $form = $this->gravity->form($form_id); if (! $this->valid_form($form, false)) return $this->error('turmas_bridge_reconciliation_required', 'A materialização existente requer reconciliação.', 409); return $this->response($key, $form_id, true); }
 	/** @return array<string,mixed> */
