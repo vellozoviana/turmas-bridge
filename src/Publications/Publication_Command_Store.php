@@ -16,6 +16,8 @@ interface Publication_Command_Store {
 
 	/** @return array<string, mixed>|null */
 	public function find(string $idempotency_key): ?array;
+	/** Null means the read failed and callers must fail closed. */
+	public function has_unresolved_publication(string $publication_key, string $except_key): ?bool;
 	/** @return array{result:string,record:?array} */
 	public function reserve(string $idempotency_key, string $payload_hash, string $publication_key): array;
 	/** @return array{result:string,record:?array} */

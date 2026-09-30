@@ -97,13 +97,48 @@ final class PublicationControllerTest extends TestCase {
 	}
 
 	public function test_safe_pre_side_effect_error_returns_to_reserved_for_a_later_retry(): void {
-		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer(); $materializer->error = new \WP_Error('turmas_bridge_gravity_forms_unavailable', 'Indisponível.');
+		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer(); $materializer->error = new \WP_Error('turmas_bridge_gravity_forms_unavailable', 'Indisponível.', array('status' => 503, 'pre_effect' => true));
 		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer()); $key = 'idempotency-safe-retry-01';
 
 		self::assertSame('turmas_bridge_gravity_forms_unavailable', $controller->receive($this->request($this->payload(), $key))->get_error_code());
 		$materializer->error = null;
 		self::assertSame(201, $controller->receive($this->request($this->payload(), $key))->get_status());
 		self::assertSame(2, $materializer->calls);
+	}
+
+	public function test_missing_cre_preflight_returns_to_reserved_without_choices_or_inventory(): void {
+		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer();
+		$materializer->error = new \WP_Error('turmas_bridge_cre_field_missing', 'CRES 04, 05, 11 ausentes.', array('status' => 422, 'pre_effect' => true, 'missing_cres' => array('04', '05', '11')));
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
+		$first = $controller->receive($this->request($this->payload(), 'idempotency-preflight-01'));
+		self::assertSame('turmas_bridge_cre_field_missing', $first->get_error_code());
+		self::assertSame(Publication_Command_Store::RESERVED, $store->records['idempotency-preflight-01']['state']);
+		self::assertNotContains('choices', $GLOBALS['turmas_bridge_publication_order']);
+		self::assertNotContains('inventory', $GLOBALS['turmas_bridge_publication_order']);
+		$materializer->error = null;
+		self::assertSame(201, $controller->receive($this->request($this->payload(), 'idempotency-preflight-01'))->get_status());
+		self::assertSame(2, $materializer->calls);
+	}
+
+	public function test_same_error_code_without_pre_effect_evidence_requires_reconciliation(): void {
+		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer();
+		$materializer->error = new \WP_Error('turmas_bridge_cre_field_missing', 'Após efeito parcial.', array('status' => 422));
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
+		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), 'idempotency-partial-01'))->get_error_code());
+		self::assertSame(Publication_Command_Store::RECONCILIATION_REQUIRED, $store->records['idempotency-partial-01']['state']);
+		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), 'idempotency-partial-01'))->get_error_code());
+		self::assertSame(1, $materializer->calls);
+	}
+
+	public function test_different_key_cannot_bypass_unresolved_partial_effect(): void {
+		$store = new Memory_Command_Store(); $materializer = new Fake_Materializer();
+		$materializer->error = new \WP_Error('turmas_bridge_clone_outcome_unknown', 'Efeito incerto.');
+		$controller = new Publication_Controller($store, $materializer, new Fake_Choice_Preparer(), null, new Fake_Inventory_Preparer());
+		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), 'idempotency-partial-a'))->get_error_code());
+		$materializer->error = null;
+		self::assertSame('turmas_bridge_reconciliation_required', $controller->receive($this->request($this->payload(), 'idempotency-partial-b'))->get_error_code());
+		self::assertSame(1, $materializer->calls);
+		self::assertCount(1, $store->records);
 	}
 
 	public function test_materializing_write_failure_does_not_start_the_side_effect(): void {
@@ -198,6 +233,7 @@ final class Memory_Command_Store implements Publication_Command_Store {
 	/** @var array<string,array<string,mixed>> */ public array $records = array();
 	/** @var list<string> */ public array $events = array(); public int $writes = 0; public bool $fail_begin = false; public bool $fail_succeed = false;
 	public function find(string $idempotency_key): ?array { return $this->records[$idempotency_key] ?? null; }
+	public function has_unresolved_publication(string $publication_key, string $except_key): ?bool { foreach ($this->records as $key => $record) if ($key !== $except_key && ($record['publication_key'] ?? '') === $publication_key && in_array($record['state'], array(self::MATERIALIZING, self::RECONCILIATION_REQUIRED), true)) return true; return false; }
 	public function reserve(string $idempotency_key, string $payload_hash, string $publication_key): array { $this->events[] = 'reserve'; $GLOBALS['turmas_bridge_publication_order'][] = 'reserve'; if (isset($this->records[$idempotency_key])) return $this->existing($idempotency_key, $payload_hash); $this->records[$idempotency_key] = array('idempotency_key' => $idempotency_key, 'payload_hash' => $payload_hash, 'publication_key' => $publication_key, 'state' => self::RESERVED, 'updated_at' => '2025-10-09 08:53:20', 'response_status' => 202, 'response_body' => '{"status":"processing"}', 'last_error_code' => ''); return array('result' => self::ACQUIRED, 'record' => null); }
 	public function begin_materialization(string $idempotency_key, string $payload_hash, string $publication_key): array { $this->events[] = 'begin'; $GLOBALS['turmas_bridge_publication_order'][] = 'begin'; if ($this->fail_begin) return array('result' => self::STORAGE_FAILURE, 'record' => null); $record = $this->records[$idempotency_key] ?? null; if (! is_array($record) || $record['payload_hash'] !== $payload_hash || $record['state'] !== self::RESERVED) return $this->existing($idempotency_key, $payload_hash); $this->records[$idempotency_key]['state'] = self::MATERIALIZING; $this->records[$idempotency_key]['updated_at'] = '2025-10-09 08:53:20'; return array('result' => self::ACQUIRED, 'record' => null); }
 	public function succeed(string $idempotency_key, string $payload_hash, int $status, array $response): bool { $this->events[] = 'succeed'; $GLOBALS['turmas_bridge_publication_order'][] = 'succeed'; if ($this->fail_succeed) return false; $record = $this->records[$idempotency_key] ?? null; if (! is_array($record) || $record['payload_hash'] !== $payload_hash || $record['state'] !== self::MATERIALIZING) return false; $this->writes++; $this->records[$idempotency_key]['state'] = self::SUCCEEDED; $this->records[$idempotency_key]['response_status'] = $status; $this->records[$idempotency_key]['response_body'] = (string) json_encode($response); return true; }

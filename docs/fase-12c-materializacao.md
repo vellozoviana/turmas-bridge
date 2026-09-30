@@ -1,5 +1,9 @@
 # Fase 12C — materialização controlada
 
+O contrato de preflight e de replay conservador posterior está documentado em
+`p3-f-materialization-preflight.md` e prevalece sobre o comportamento de
+recuperação descrito historicamente abaixo.
+
 Materialização cria um formulário técnico inativo a partir de um template
 configurado, sem abrir inscrições. `materialized` significa somente que o
 Bridge associou `publication_key` a `form_id`; não significa `published`.
