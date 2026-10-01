@@ -20,9 +20,19 @@ final class Publication_Choice_Service implements Publication_Choice_Preparer {
 			$map = $this->fields->resolve($form); if (is_wp_error($map)) return $map;
 			$classes = (array) ($payload['classes'] ?? array()); $desired = $this->desired($classes, $map); if (is_wp_error($desired)) return $desired;
 			$plans = $this->plans->build($classes, $map); if (is_wp_error($plans)) return $plans;
-			$fingerprint = hash('sha256', (string) wp_json_encode($desired, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+			$contract = new Cre_Selection_Contract();
+			$cres = $contract->required_cres($classes);
+			$selection_error = $contract->validate($form, $cres, $map);
+			if ($selection_error !== null) return $selection_error;
+			$controller = $contract->controller($form);
+			$fingerprint_input = $controller === null ? $desired : array('choices' => $desired, 'controller_cres' => $cres);
+			$fingerprint = hash('sha256', (string) wp_json_encode($fingerprint_input, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 			if ((string) ($record['choices_fingerprint'] ?? '') === $fingerprint) return array('publication_key' => $key, 'status' => 'choices_prepared', 'idempotent_replay' => true, 'resource_plans' => $plans);
 			foreach ($map as $cre => $field) { $form['fields'][$field['index']]['choices'] = $desired[$cre] ?? array(); }
+			if ($controller !== null) {
+				$form['fields'][$controller['index']]['choices'] = array_map(static fn (string $cre): array => array('text' => 'CRE ' . $cre, 'value' => $cre), $cres);
+				$form['turmasBridgeCreExclusive'] = true;
+			}
 			$result = $this->gravity->update_form($form); if (is_wp_error($result) || $result !== true) return $this->error('turmas_bridge_choice_update_failed', 'Não foi possível atualizar as choices do formulário.', 502);
 			if (! $this->store->choice_fingerprint($key, $fingerprint)) return $this->error('turmas_bridge_choice_fingerprint_failed', 'As choices foram atualizadas e requerem reconciliação.', 502);
 			return array('publication_key' => $key, 'status' => 'choices_prepared', 'idempotent_replay' => false, 'resource_plans' => $plans);

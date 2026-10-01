@@ -87,6 +87,7 @@ class wpdb {
 }
 
 function add_action(string $hook, callable $callback, int $priority = 10, int $accepted_args = 1): void {}
+function add_filter(string $hook, callable $callback, int $priority = 10, int $accepted_args = 1): void { $GLOBALS['turmas_bridge_test_filters'][$hook][] = array('callback' => $callback, 'priority' => $priority); }
 function register_activation_hook(string $file, callable $callback): void {}
 function add_options_page(mixed ...$arguments): void {}
 function register_rest_route(string $namespace, string $route, array $arguments): void { $GLOBALS['turmas_bridge_test_routes'][] = array('namespace' => $namespace, 'route' => $route, 'arguments' => $arguments); }
