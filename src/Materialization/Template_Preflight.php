@@ -6,6 +6,7 @@ namespace TurmasBridge\Materialization;
 
 use TurmasBridge\Choices\Resource_Plan_Builder;
 use TurmasBridge\Choices\Template_Field_Map;
+use TurmasBridge\Choices\Cre_Selection_Contract;
 use TurmasBridge\Inventory\WordPress_GP_Inventory_Operations;
 
 /** Pure template/command checks plus a read-only inventory runtime probe. */
@@ -40,6 +41,9 @@ final class Template_Preflight {
 			sort($missing, SORT_STRING);
 			return new \WP_Error('turmas_bridge_cre_field_missing', 'O template não possui fields para as CRES ' . implode(', ', $missing) . '.', array('status' => 422, 'pre_effect' => true, 'missing_cres' => $missing));
 		}
+		$contract = new Cre_Selection_Contract();
+		$selection_error = $contract->validate($template, $contract->required_cres((array) ($payload['classes'] ?? array())), $map);
+		if ($selection_error !== null) return $this->pre_effect($selection_error);
 		$plans = $this->plans->build_models((array) ($payload['classes'] ?? array()), $map);
 		if (is_wp_error($plans)) return $this->pre_effect($plans);
 		try { $readiness = call_user_func($this->inventory_readiness); }

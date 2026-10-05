@@ -127,6 +127,26 @@ final class MaterializationServiceTest extends TestCase {
 		self::assertSame(0, $gateway->duplicates); self::assertSame(array(), $store->records);
 	}
 
+	public function test_old_multi_cre_template_without_selector_is_rejected_before_clone(): void {
+		$store = new Memory_Materialization_Store(); $gateway = new Fake_Gravity_Gateway(); array_pop($gateway->template['fields']);
+		$result = $this->service($store, $gateway)->materialize($this->payload(), 'a');
+		self::assertSame('turmas_bridge_cre_selection_invalid', $result->get_error_code());
+		self::assertTrue($result->get_error_data()['pre_effect']);
+		self::assertSame(0, $gateway->duplicates); self::assertSame(array(), $store->records);
+	}
+
+	public function test_single_cre_remains_compatible_without_selector(): void {
+		$gateway = new Fake_Gravity_Gateway(); array_pop($gateway->template['fields']);
+		$payload = $this->payload(); $payload['classes'][0]['cres'] = array('01');
+		self::assertSame('materialized', $this->service(new Memory_Materialization_Store(), $gateway)->materialize($payload, 'a')['status']);
+	}
+
+	public function test_invalid_cre_condition_is_rejected_before_clone(): void {
+		$gateway = new Fake_Gravity_Gateway(); $gateway->template['fields'][1]['conditionalLogic']['rules'][0]['value'] = '01';
+		$result = $this->service(new Memory_Materialization_Store(), $gateway)->materialize($this->payload(), 'a');
+		self::assertSame('turmas_bridge_cre_selection_invalid', $result->get_error_code()); self::assertSame(0, $gateway->duplicates);
+	}
+
 	public function test_materialized_form_without_completed_choices_cannot_be_blindly_replayed(): void {
 		$store = new Memory_Materialization_Store(); $gateway = new Fake_Gravity_Gateway(); $service = $this->service($store, $gateway);
 		self::assertSame('materialized', $service->materialize($this->payload(), 'a')['status']);
@@ -142,6 +162,21 @@ final class MaterializationServiceTest extends TestCase {
 		self::assertSame('FAILED', $store->records['2027:MT1']['status']);
 		self::assertSame('turmas_bridge_reconciliation_required', $service->materialize($this->payload(), 'a')->get_error_code());
 		self::assertSame(1, $gateway->duplicates);
+	}
+
+	public function test_controller_lost_during_clone_is_partial_effect(): void {
+		$store = new Memory_Materialization_Store(); $gateway = new Fake_Gravity_Gateway(); $gateway->clone_drops_controller = true;
+		$result = $this->service($store, $gateway)->materialize($this->payload(), 'a');
+		self::assertSame('turmas_bridge_clone_structure_invalid', $result->get_error_code());
+		self::assertSame('FAILED', $store->records['2027:MT1']['status']);
+		self::assertSame(412, $store->records['2027:MT1']['form_id']);
+	}
+
+	public function test_controller_changed_but_still_valid_during_clone_is_partial_effect(): void {
+		$store = new Memory_Materialization_Store(); $gateway = new Fake_Gravity_Gateway(); $gateway->clone_alters_controller = true;
+		$result = $this->service($store, $gateway)->materialize($this->payload(), 'a');
+		self::assertSame('turmas_bridge_clone_structure_invalid', $result->get_error_code());
+		self::assertSame('FAILED', $store->records['2027:MT1']['status']);
 	}
 
 	public function test_clone_left_active_is_partial_effect_not_a_success(): void {
@@ -177,9 +212,22 @@ final class Memory_Materialization_Store implements Materialization_Store {
 }
 
 final class Fake_Gravity_Gateway implements Gravity_Forms_Gateway {
-	public bool $available = true; public bool $materialized_form_missing = false; public bool $clone_fails = false; public bool $clone_drops_cre = false; public bool $clone_stays_active = false; /** @var array<string,mixed>|null */ public ?array $template = array('id' => 199, 'is_active' => true, 'fields' => array(array('id' => 10, 'type' => 'select', 'adminLabel' => 'turma_cre_01', 'choices' => array(array('text' => 'x'))), array('id' => 11, 'type' => 'select', 'adminLabel' => 'turma_cre_02', 'choices' => array(array('text' => 'y'))))); public int $duplicates = 0;
+	public bool $available = true; public bool $materialized_form_missing = false; public bool $clone_fails = false; public bool $clone_drops_cre = false; public bool $clone_drops_controller = false; public bool $clone_alters_controller = false; public bool $clone_stays_active = false;
+	/** @var array<string,mixed>|null */
+	public ?array $template = array('id' => 199, 'is_active' => true, 'fields' => array(
+		array('id' => 10, 'type' => 'select', 'adminLabel' => 'turma_cre_01', 'isRequired' => true, 'conditionalLogic' => array('actionType' => 'show', 'logicType' => 'all', 'rules' => array(array('fieldId' => 9, 'operator' => 'is', 'value' => '01'))), 'choices' => array(array('text' => 'x'))),
+		array('id' => 11, 'type' => 'select', 'adminLabel' => 'turma_cre_02', 'isRequired' => true, 'conditionalLogic' => array('actionType' => 'show', 'logicType' => 'all', 'rules' => array(array('fieldId' => 9, 'operator' => 'is', 'value' => '02'))), 'choices' => array(array('text' => 'y'))),
+		array('id' => 9, 'type' => 'select', 'adminLabel' => 'turmas_cre_selector', 'isRequired' => true, 'placeholder' => 'Selecione a CRE', 'choices' => array(array('text' => 'CRE 01', 'value' => '01'), array('text' => 'CRE 02', 'value' => '02'))),
+	));
+	public int $duplicates = 0;
 	public function is_available(): bool { return $this->available; }
-	public function form(int $form_id): ?array { if ($form_id === 199) return $this->template; return $this->duplicates > 0 && ! $this->materialized_form_missing ? array('id' => $form_id, 'is_active' => $this->clone_stays_active, 'fields' => $this->clone_drops_cre ? array_slice($this->template['fields'], 0, 1) : $this->template['fields']) : null; }
+	public function form(int $form_id): ?array {
+		if ($form_id === 199) return $this->template;
+		if ($this->duplicates < 1 || $this->materialized_form_missing) return null;
+		$fields = $this->clone_drops_cre ? array_slice($this->template['fields'], 0, 1) : ($this->clone_drops_controller ? array_slice($this->template['fields'], 0, -1) : $this->template['fields']);
+		if ($this->clone_alters_controller) $fields[2]['choices'][] = array('text' => 'CRE 03', 'value' => '03');
+		return array('id' => $form_id, 'is_active' => $this->clone_stays_active, 'fields' => $fields);
+	}
 	public function duplicate_inactive(int $template_id, string $title, string $marker): int|\WP_Error { if ($this->clone_fails) return new \WP_Error('turmas_bridge_form_clone_failed', 'Falha fictícia de clone.'); $this->duplicates++; return 412; }
 	public function update_form(array $form): bool|\WP_Error { return true; }
 }

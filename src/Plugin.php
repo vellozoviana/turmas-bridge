@@ -17,6 +17,7 @@ final class Plugin {
 		add_action('admin_menu', array(Settings_Page::class, 'register_page'));
 		add_action('admin_init', array(Settings_Page::class, 'handle_submission'));
 		add_action(Nonce_Store::CLEANUP_HOOK, array(Nonce_Store::class, 'cleanup_expired'));
+		\TurmasBridge\Choices\Cre_Submission_Guard::register();
 	}
 
 	public static function activate(): void {
