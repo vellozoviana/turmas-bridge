@@ -94,3 +94,46 @@ GP Inventory 1.0.29, Bridge 0.11.2/schema 0.9.0, EPF 0.14.1/schema 0.8.0.
 Protected fixtures are present. Form 18 is inactive with Entries 15 and 16;
 Resource 19 has capacity 4, fresh consumed 2, bindings 18_3/18_4/18_5 healthy.
 Template global is 11. A dedicated backup precedes any plugin replacement.
+
+## Physical validation result
+
+2026-10-09: PASS. This final result supersedes the earlier NOT RUN checkpoint
+above, which is retained as execution history.
+
+Environment:
+
+- TURMAS-BRIDGE 0.11.3;
+- schema 0.9.0;
+- Gravity Forms 2.10.0;
+- GP Inventory 1.0.32.
+
+Controlled submission:
+
+- Form 18;
+- exactly one new Entry: 17, created by a normal human Gravity Forms submission;
+- selected CRE: 11;
+- only `turma_cre_11` populated; `turma_cre_04` and `turma_cre_05` empty;
+- effective claims: 1;
+- quantity: 1, verified with the real vendor consumption query;
+- Resource 19 capacity remained 4;
+- fresh consumed changed 2 -> 3;
+- multi-CRE double claim: NO;
+- shared Resource: PASS;
+- bindings `18_3`, `18_4` and `18_5` preserved;
+- no new Resource;
+- no new binding;
+- no unexpected operation;
+- Form 18 returned to INACTIVE.
+
+Preservation:
+
+- P1 preserved;
+- P2 preserved;
+- P3 preserved, with only the planned new Entry and consumption increment;
+- historical incident `2094:E2F` preserved;
+- Entries 15 and 16 and their metadata preserved, confirmed by hash comparison;
+- global template remained 11.
+
+Conclusion: GP Inventory 1.0.32 physical compatibility: PASS.
+
+Production was not accessed. This result does not authorize production deployment.
