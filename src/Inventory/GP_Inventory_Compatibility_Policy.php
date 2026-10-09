@@ -6,7 +6,7 @@ namespace TurmasBridge\Inventory;
 
 /** Explicit allowlist for compatibility-sensitive GP Inventory internals. */
 final class GP_Inventory_Compatibility_Policy {
-	public const VALIDATED_VERSIONS = array('1.0.29');
+	public const VALIDATED_VERSIONS = array('1.0.29', '1.0.32');
 
 	public function __construct(private ?string $version_override = null, private bool $read_runtime = true) {}
 
